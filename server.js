@@ -3,7 +3,6 @@ const { Client } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 1. 数据库连接配置 (带有错误捕获，防止启动崩溃)
 const client = new Client({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -12,191 +11,73 @@ const client = new Client({
 async function startServer() {
     try {
         await client.connect();
-        console.log("✅ WOW! Doge connected to Database!");
-        // 创建表结构
         await client.query('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance INTEGER)');
         await client.query('CREATE TABLE IF NOT EXISTS logs (id SERIAL PRIMARY KEY, sender TEXT, receiver TEXT, amount INTEGER, time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
-        // 初始化管理员
+        
+        // 核心：只在这里产生 1,000,000 个币，给 Admin
         await client.query("INSERT INTO users (name, balance) VALUES ('Admin', 1000000) ON CONFLICT DO NOTHING");
-    } catch (err) {
-        console.error("❌ DB Connection Error:", err.message);
-    }
-
-    app.listen(port, () => {
-        console.log(`🚀 MBA2509007 Mission Control active on port ${port}`);
-    });
+        console.log("✅ 1,000,000 WOWS LOCKED IN.");
+    } catch (err) { console.error("DB Error:", err.message); }
+    app.listen(port);
 }
 
-// 2. UI 设计部分 (Doge 官网风格)
-const htmlHead = `
-<!DOCTYPE html>
-<html lang="zh">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MBA2509007 - MUCH WOW!</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&display=swap');
-        :root { --dg: #e1b303; --db: #fcf1d1; --txt: #5d4037; }
-        body { 
-            background: var(--db); 
-            background-image: url('https://www.dogecoin.com/assets/images/doge.png');
-            background-repeat: no-repeat; background-position: right bottom; background-attachment: fixed;
-            color: var(--txt); font-family: 'Comic Neue', cursive; margin: 0; padding-top: 60px;
-        }
-        .ticker { background: var(--dg); color: white; padding: 12px; position: fixed; top: 0; width: 100%; text-align: center; z-index: 100; font-size: 14px; font-weight: bold; }
-        .container { max-width: 550px; margin: 0 auto; padding: 20px; text-align: center; }
-        .main-card { 
-            background: rgba(255, 255, 255, 0.92); padding: 35px; border-radius: 40px; 
-            border: 5px solid var(--dg); box-shadow: 15px 15px 0px var(--dg);
-        }
-        .doge-logo { width: 120px; border: 5px solid white; border-radius: 50%; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        .status-box { background: #f4d35e; padding: 15px; border-radius: 20px; margin: 20px 0; border: 2px dashed var(--dg); }
-        .btn-moon { 
-            background: #ba9f33; color: white; border: none; padding: 18px 40px; 
-            font-size: 22px; border-radius: 50px; cursor: pointer; transition: 0.2s; 
-            font-family: inherit; box-shadow: 0 6px 0 #8d7926; margin: 10px 0;
-        }
-        .btn-moon:active { transform: translateY(4px); box-shadow: 0 2px 0 #8d7926; }
-        .input-field { 
-            width: 85%; padding: 15px; margin: 8px 0; border: 3px solid #eee; 
-            border-radius: 15px; font-family: inherit; font-size: 18px;
-        }
-        .logs { margin-top: 30px; text-align: left; background: white; padding: 15px; border-radius: 15px; font-size: 13px; }
-    </style>
-</head>
-<body>
-    <div class="ticker" id="tk">WOW! FETCHING DOGE DATA...</div>
-`;
+const htmlHead = `<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><title>MBA2509007 - DOGE</title><style>@import url('https://fonts.googleapis.com/css2?family=Comic+Neue:wght@700&display=swap');body { background: #fcf1d1; background-image: url('https://www.dogecoin.com/assets/images/doge.png'); background-repeat: no-repeat; background-position: right bottom; background-attachment: fixed; color: #5d4037; font-family: 'Comic Neue', cursive; margin: 0; padding-top: 60px; }.ticker { background: #e1b303; color: white; padding: 12px; position: fixed; top: 0; width: 100%; text-align: center; z-index: 100; font-size: 14px; }.container { max-width: 550px; margin: 0 auto; padding: 20px; text-align: center; }.main-card { background: rgba(255, 255, 255, 0.9); padding: 35px; border-radius: 40px; border: 5px solid #e1b303; box-shadow: 15px 15px 0px #e1b303; }.status-box { background: #f4d35e; padding: 15px; border-radius: 20px; margin: 20px 0; border: 2px dashed #e1b303; }.btn { background: #ba9f33; color: white; border: none; padding: 15px 35px; font-size: 22px; border-radius: 50px; cursor: pointer; box-shadow: 0 6px 0 #8d7926; margin: 10px 0; }.input { width: 85%; padding: 15px; margin: 8px 0; border: 3px solid #eee; border-radius: 15px; font-family: inherit; font-size: 18px; }</style></head><body><div class="ticker" id="tk">WOW! MBA2509007 ECONOMY</div>`;
 
-// 3. 路由逻辑
 app.get('/', async (req, res) => {
     try {
-        const users = await client.query('SELECT COUNT(*) FROM users');
+        const stats = await client.query('SELECT COUNT(*) as u_count, SUM(balance) as b_total FROM users');
         const logs = await client.query('SELECT * FROM logs ORDER BY time DESC LIMIT 5');
+        const count = stats.rows[0].u_count;
+        const total = stats.rows[0].b_total || 0;
         let logHtml = logs.rows.map(l => `<div style="border-bottom:1px solid #eee;padding:5px 0;">🐕 <b>${l.sender}</b> → ${l.amount} → <b>${l.receiver}</b></div>`).join('');
 
-        res.send(`
-            ${htmlHead}
-            <div class="container">
-                <img src="https://cryptologos.cc/logos/dogecoin-doge-logo.png" class="doge-logo">
-                <h1 style="margin:0; font-size:40px;">MBA2509007 COIN</h1>
-                <p>Very Currency! Much Professional!</p>
-                
-                <div class="main-card">
-                    <div class="status-box"><b>${users.rows[0].count}</b> Shibes in Network</div>
-                    <button class="btn-moon" onclick="go('/api/balance?u='+prompt('Name?'))">🔍 CHECK MY WOWS</button>
-                    <hr style="border:1px solid #eee; margin:30px 0;">
-                    <input type="text" id="f" class="input-field" placeholder="From (Your Name)">
-                    <input type="text" id="t" class="input-field" placeholder="To (Friend Name)">
-                    <input type="number" id="a" class="input-field" placeholder="Amount">
-                    <button class="btn-moon" style="background:#28a745; box-shadow:0 6px 0 #1e7e34;" onclick="send()">🚀 SEND TO MOON</button>
-                    
-                    <div class="logs">
-                        <b style="color:var(--dg)">Recent Activity:</b><br>${logHtml || 'Waiting for first wow...'}
-                    </div>
+        res.send(`${htmlHead}<div class="container">
+            <img src="https://cryptologos.cc/logos/dogecoin-doge-logo.png" style="width:120px;">
+            <h1 style="font-size:40px;margin:10px 0;">MBA2509007 COIN</h1>
+            <div class="main-card">
+                <div class="status-box">
+                    <span style="font-size:12px;color:#8d7926;">LIMITED TOTAL SUPPLY</span><br>
+                    <b>${count}</b> Shibes | <b style="color:#d81b60;">${Number(total).toLocaleString()}</b> / 1,000,000 WOWs
                 </div>
+                <button class="btn" onclick="check()">🔍 MY WALLET</button>
+                <hr style="border:1px solid #eee;margin:30px 0;">
+                <input type="text" id="f" class="input" placeholder="From (Your Name)">
+                <input type="text" id="t" class="input" placeholder="To (Friend Name)">
+                <input type="number" id="a" class="input" placeholder="Amount">
+                <button class="btn" style="background:#28a745;box-shadow:0 6px 0 #1e7e34;" onclick="send()">🚀 SEND WOW</button>
+                <div style="text-align:left;margin-top:20px;font-size:13px;"><b>Recent Activity:</b><br>${logHtml}</div>
             </div>
-            <script>
-                async function update(){
-                    try {
-                        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=dogecoin&include_24hr_change=true');
-                        const d = await r.json();
-                        document.getElementById('tk').innerHTML = "DOGE: $" + d.dogecoin.usd + " (" + d.dogecoin.usd_24h_change.toFixed(2) + "%) | MBA2509007: $1.00";
-                    } catch(e){}
-                }
-                setInterval(update, 15000); update();
-                function go(url){ location.href = url; }
-                function send(){
-                    const f=document.getElementById('f').value, t=document.getElementById('t').value, a=document.getElementById('a').value;
-                    if(f&&t&&a) go('/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a);
-                }
-            </script>
-        </body></html>`);
-    } catch(e) { res.send("Doge is waking up... Refresh!"); }
+        </div><script>
+            async function up(){try{const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids=dogecoin&include_24hr_change=true');const d=await r.json();document.getElementById('tk').innerHTML="DOGE: $"+d.dogecoin.usd+" ("+d.dogecoin.usd_24h_change.toFixed(2)+"%) | MBA2509007: $1.00"}catch(e){}}
+            setInterval(up,15000);up();
+            function check(){const n=prompt("Name?");if(n)location.href='/api/balance?u='+encodeURIComponent(n)}
+            function send(){const f=document.getElementById('f').value,t=document.getElementById('t').value,a=document.getElementById('a').value;if(f&&t&&a)location.href='/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a}
+        </script></body></html>`);
+    } catch(e) { res.send("Doge is loading..."); }
 });
 
 app.get('/api/balance', async (req, res) => {
     const name = req.query.u;
-    try {
-        const r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
-        if (r.rows.length === 0) {
-            await client.query('INSERT INTO users (name, balance) VALUES ($1, 10)', [name]);
-            return res.redirect('/api/balance?u=' + encodeURIComponent(name));
-        }
-        res.send(`${htmlHead}<div class="container"><div class="main-card"><h2>${name}'s WALLET</h2><div style="font-size:60px;margin:20px 0;">🐕</div><div class="status-box" style="font-size:32px;">${r.rows[0].balance} WOWS</div><button class="btn-moon" onclick="go('/')">BACK TO EARTH</button></div></div></body></html>`);
-    } catch(e) { res.send("Error"); }
+    const r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
+    if (r.rows.length === 0) {
+        // 修改：新用户注册初始余额为 0
+        await client.query('INSERT INTO users (name, balance) VALUES ($1, 0)', [name]);
+        res.redirect('/api/balance?u=' + encodeURIComponent(name));
+    } else {
+        res.send(`${htmlHead}<div class="container"><div class="main-card"><h2>${name}</h2><div style="font-size:48px;margin:20px 0;">${r.rows[0].balance}</div><button class="btn" onclick="location.href='/'">BACK</button></div></div></body></html>`);
+    }
 });
 
 app.get('/api/pay', async (req, res) => {
     const { f, t, a } = req.query;
     try {
-        const amt = parseInt(a);
-        const sender = await client.query('UPDATE users SET balance = balance - $1 WHERE name = $2 AND balance >= $1', [amt, f]);
-        if (sender.rowCount === 0) return res.send("Not enough Wows!");
+        const amt = Math.abs(parseInt(a)); // 防止负数转账
+        const s = await client.query('UPDATE users SET balance = balance - $1 WHERE name = $2 AND balance >= $1', [amt, f]);
+        if (s.rowCount === 0) return res.send("Not enough wows in your wallet!");
         await client.query('INSERT INTO users (name, balance) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET balance = users.balance + $2', [t, amt]);
         await client.query('INSERT INTO logs (sender, receiver, amount) VALUES ($1, $2, $3)', [f, t, amt]);
         res.redirect('/');
-    } catch (e) { res.send("Fail"); }
+    } catch (e) { res.send("Transaction Error"); }
 });
 
 startServer();
-// ... 前面的代码保持不变 ...
-
-app.get('/', async (req, res) => {
-    try {
-        // 修改这里：同时查询用户总数和币的总数
-        const stats = await client.query('SELECT COUNT(*) as count, SUM(balance) as total FROM users');
-        const logs = await client.query('SELECT * FROM logs ORDER BY time DESC LIMIT 5');
-        
-        const userCount = stats.rows[0].count;
-        const totalSupply = stats.rows[0].total || 0; // 如果没人，显示0
-
-        let logHtml = logs.rows.map(l => `<div style="border-bottom:1px solid #eee;padding:5px 0;">🐕 <b>${l.sender}</b> → ${l.amount} → <b>${l.receiver}</b></div>`).join('');
-
-        res.send(`
-            ${htmlHead}
-            <div class="container">
-                <img src="https://cryptologos.cc/logos/dogecoin-doge-logo.png" class="doge-logo">
-                <h1 style="margin:0; font-size:40px;">MBA2509007 COIN</h1>
-                <p>Very Currency! Much Professional!</p>
-                
-                <div class="main-card">
-                    <div class="status-box">
-                        <div style="font-size:12px; color:#8d7926; margin-bottom:5px;">GLOBAL NETWORK STATS</div>
-                        <b>${userCount}</b> Shibes | <b>${totalSupply.toLocaleString()}</b> Total WOWs
-                    </div>
-                    
-                    <button class="btn-moon" onclick="go('/api/balance?u='+prompt('Name?'))">🔍 CHECK MY WOWS</button>
-                    <hr style="border:1px solid #eee; margin:30px 0;">
-                    
-                    <input type="text" id="f" class="input-field" placeholder="From (Your Name)">
-                    <input type="text" id="t" class="input-field" placeholder="To (Friend Name)">
-                    <input type="number" id="a" class="input-field" placeholder="Amount">
-                    <button class="btn-moon" style="background:#28a745; box-shadow:0 6px 0 #1e7e34;" onclick="send()">🚀 SEND TO MOON</button>
-                    
-                    <div class="logs">
-                        <b style="color:var(--dg)">Recent Activity:</b><br>${logHtml || 'Waiting for first wow...'}
-                    </div>
-                </div>
-            </div>
-            <script>
-                async function update(){
-                    try {
-                        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=dogecoin&include_24hr_change=true');
-                        const d = await r.json();
-                        document.getElementById('tk').innerHTML = "DOGE: $" + d.dogecoin.usd + " (" + d.dogecoin.usd_24h_change.toFixed(2) + "%) | MBA2509007: $1.00";
-                    } catch(e){}
-                }
-                setInterval(update, 15000); update();
-                function go(url){ location.href = url; }
-                function send(){
-                    const f=document.getElementById('f').value, t=document.getElementById('t').value, a=document.getElementById('a').value;
-                    if(f&&t&&a) go('/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a);
-                }
-            </script>
-        </body></html>`);
-    } catch(e) { res.send("Doge is waking up... Refresh!"); }
-});
-
-// ... 后面的代码（balance 和 pay）保持不变 ...
