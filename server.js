@@ -38,28 +38,20 @@ const htmlHead = `
 
         .wrapper { display: flex; height: 100vh; padding-top: 80px; box-sizing: border-box; }
         
-        /* 左：原生 Canvas 地球 */
-        .left-zone { flex: 1; position: relative; background: #000; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-        #earthCanvas { cursor: move; }
+        /* 左：原生 Canvas 高科技拓扑地球 */
+        .left-zone { flex: 1; position: relative; background: #000; overflow: hidden; cursor: crosshair; }
+        #nodeCanvas { pointer-events: none; }
 
-        /* 右：卡片区 */
+        /* 右：卡片区 (保持不变) */
         .right-zone { width: 450px; background: var(--card); border-left: 1px solid var(--border); padding: 40px; box-sizing: border-box; display: flex; flex-direction: column; z-index: 10; }
-        
         .panel { background: #1a1a1a; padding: 25px; border-radius: 20px; border: 1px solid var(--border); }
-        input { 
-            width: 100%; padding: 15px; margin-bottom: 15px; background: #000; border: 1px solid var(--border); 
-            color: var(--gold); border-radius: 8px; font-family: inherit; box-sizing: border-box; font-size: 16px;
-        }
-        .btn { 
-            width: 100%; padding: 18px; border-radius: 10px; border: none; cursor: pointer; 
-            font-weight: bold; font-family: 'Orbitron', sans-serif; transition: 0.3s; font-size: 16px;
-        }
+        input { width: 100%; padding: 15px; margin-bottom: 15px; background: #000; border: 1px solid var(--border); color: var(--gold); border-radius: 8px; font-family: inherit; box-sizing: border-box; font-size: 16px; }
+        .btn { width: 100%; padding: 18px; border-radius: 10px; border: none; cursor: pointer; font-weight: bold; font-family: 'Orbitron', sans-serif; transition: 0.3s; font-size: 16px; }
         .btn-check { background: #333; color: #fff; margin-bottom: 20px; }
         .btn-send { background: var(--gold); color: #000; }
         .btn:hover { opacity: 0.8; transform: scale(1.02); }
-
         .log-box { margin-top: auto; height: 150px; font-size: 11px; color: #666; overflow-y: auto; border-top: 1px solid var(--border); padding-top: 10px; }
-        .node-tag { position: absolute; bottom: 20px; left: 20px; color: var(--gold); font-size: 12px; letter-spacing: 2px; }
+        .node-tag { position: absolute; bottom: 20px; left: 20px; color: var(--gold); font-size: 12px; letter-spacing: 2px; text-shadow: 0 0 5px var(--gold); }
     </style>
 </head>
 <body>
@@ -79,25 +71,25 @@ app.get('/', async (req, res) => {
 
     <div class="wrapper">
         <div class="left-zone">
-            <canvas id="earthCanvas"></canvas>
-            <div class="node-tag">GLOBAL RESERVE NODE: ACTIVE</div>
+            <canvas id="nodeCanvas"></canvas>
+            <div class="node-tag">MBA2509007 DATA TOPOLOGY: CONNECTED</div>
         </div>
 
         <div class="right-zone">
             <div style="text-align:center; margin-bottom:30px;">
                 <img src="https://cryptologos.cc/logos/dogecoin-doge-logo.png" style="width:80px;">
-                <h2 style="font-family:'Orbitron'; margin-top:10px; color:var(--gold);">MBA2509007</h2>
-                <p style="font-size:12px; color:#666;">Secure Asset Management Terminal</p>
+                <h2 style="font-family:'Orbitron'; margin-top:10px; color:var(--gold);">GLOBAL TERMINAL</h2>
+                <p style="font-size:12px; color:#666;">Interconnected Ledger Access</p>
             </div>
 
             <button class="btn btn-check" onclick="check()">🔍 ACCESS MY VAULT</button>
 
             <div class="panel">
-                <div style="font-size:14px; margin-bottom:15px; color:var(--gold);">TRANSFER PROTOCOL</div>
-                <input type="text" id="f" placeholder="Sender Name (Admin?)">
-                <input type="text" id="t" placeholder="Receiver Name">
+                <div style="font-size:14px; margin-bottom:15px; color:var(--gold);">EXECUTE TRANSFER PROTOCOL</div>
+                <input type="text" id="f" placeholder="Identify Sender (Admin?)">
+                <input type="text" id="t" placeholder="Identify Receiver">
                 <input type="number" id="a" placeholder="Amount (WOW)">
-                <button class="btn btn-send" onclick="send()">🚀 EXECUTE TRANSFER</button>
+                <button class="btn btn-send" onclick="send()">🚀 SEND TO MOON</button>
             </div>
 
             <div class="log-box">
@@ -107,55 +99,97 @@ app.get('/', async (req, res) => {
     </div>
 
     <script>
-        // 核心：纯 Canvas 3D 球体渲染引擎
-        const canvas = document.getElementById('earthCanvas');
+        // 核心：原生 Canvas 3D 拓扑地球渲染引擎
+        const canvas = document.getElementById('nodeCanvas');
         const ctx = canvas.getContext('2d');
-        let width, height, points = [];
-        const numPoints = 400;
+        let width, height, nodes = [], links = [];
+        const numNodes = ${Math.min(200, stats.rows[0].u * 10)}; // 节点数取决于用户数
+        const radiusFactor = 0.38;
 
         function init() {
             width = canvas.width = canvas.parentElement.offsetWidth;
             height = canvas.height = canvas.parentElement.offsetHeight;
-            points = [];
-            for(let i=0; i<numPoints; i++) {
+            nodes = []; links = [];
+            // 创建地理数据节点
+            for(let i=0; i<numNodes; i++) {
                 let theta = Math.random() * Math.PI * 2;
                 let phi = Math.acos((Math.random() * 2) - 1);
-                points.push({
+                nodes.push({
                     x: Math.sin(phi) * Math.cos(theta),
                     y: Math.sin(phi) * Math.sin(theta),
-                    z: Math.cos(phi)
+                    z: Math.cos(phi),
+                    id: i,
+                    connections: []
+                });
+            }
+            // 创建数据连接线条
+            for(let i=0; i<numNodes; i++) {
+                // 每个节点随机连接 1-3 个邻近节点
+                let potentialLinks = [...nodes].sort((a, b) => {
+                    const d = (p, q) => Math.sqrt((p.x-q.x)**2 + (p.y-q.y)**2 + (p.z-q.z)**2);
+                    return d(nodes[i], a) - d(nodes[i], b);
+                }).slice(1, 4);
+                
+                potentialLinks.forEach(target => {
+                    if(Math.random() > 0.5) {
+                        links.push({ from: nodes[i], to: target });
+                    }
                 });
             }
         }
 
-        let angle = 0;
+        let angleY = 0, angleX = 0;
         function draw() {
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, width, height);
-            const radius = Math.min(width, height) * 0.35;
-            angle += 0.005;
+            const radius = Math.min(width, height) * radiusFactor;
+            angleY += 0.003; // 自转
+            // angleX = Math.sin(angleY) * 0.3; // 摇摆，增加立体感
 
             ctx.save();
             ctx.translate(width/2, height/2);
             
-            points.forEach(p => {
-                // 旋转逻辑
-                let x1 = p.x * Math.cos(angle) - p.z * Math.sin(angle);
-                let z1 = p.z * Math.cos(angle) + p.x * Math.sin(angle);
-                
-                let y2 = p.y * Math.cos(angle*0.5) - z1 * Math.sin(angle*0.5);
-                let z2 = z1 * Math.cos(angle*0.5) + p.y * Math.sin(angle*0.5);
+            // 绘制数据线条 (Links)
+            ctx.lineWidth = 0.8;
+            links.forEach(link => {
+                let from_rotated = rotate(link.from, angleY, angleX);
+                let to_rotated = rotate(link.to, angleY, angleX);
 
-                let scale = (z2 + 2) / 3;
-                let alpha = (z2 + 1) / 2;
+                // 只绘制面向观众的线条，增加通透感
+                if(from_rotated.z > 0 || to_rotated.z > 0) {
+                    let alpha = ((from_rotated.z + to_rotated.z) / 2 + 1) / 2.5;
+                    ctx.strokeStyle = \`rgba(240, 185, 11, \${alpha * 0.4})\`; // 金色线条，半透明
+                    ctx.beginPath();
+                    ctx.moveTo(from_rotated.x * radius, from_rotated.y * radius);
+                    ctx.lineTo(to_rotated.x * radius, to_rotated.y * radius);
+                    ctx.stroke();
+                }
+            });
+
+            // 绘制数据节点 (Nodes)
+            nodes.forEach(p => {
+                let rotated = rotate(p, angleY, angleX);
+                let scale = (rotated.z + 1.5) / 2.5; // Z坐标影响大小
+                let alpha = (rotated.z + 1) / 2; // Z坐标影响透明度
                 
-                ctx.fillStyle = \`rgba(240, 185, 11, \${alpha})\`;
+                ctx.fillStyle = \`rgba(240, 185, 11, \${alpha})\`; // 金色粒子
                 ctx.beginPath();
-                ctx.arc(x1 * radius, y2 * radius, scale * 2, 0, Math.PI*2);
+                ctx.arc(rotated.x * radius, rotated.y * radius, scale * 3, 0, Math.PI*2);
                 ctx.fill();
             });
             ctx.restore();
             requestAnimationFrame(draw);
+        }
+
+        // 旋转工具函数
+        function rotate(p, ay, ax) {
+            // 先绕Y轴转 (自转)
+            let x1 = p.x * Math.cos(ay) - p.z * Math.sin(ay);
+            let z1 = p.z * Math.cos(ay) + p.x * Math.sin(ay);
+            // 再绕X轴转 (俯仰)
+            let y2 = p.y * Math.cos(ax) - z1 * Math.sin(ax);
+            let z2 = z1 * Math.cos(ax) + p.y * Math.sin(ax);
+            return { x: x1, y: y2, z: z2 };
         }
 
         window.addEventListener('resize', init);
@@ -172,7 +206,7 @@ app.get('/', async (req, res) => {
     } catch(e) { res.send("Terminal error. Refreshing..."); }
 });
 
-// 余额逻辑
+// balance 和 pay 逻辑保持不变
 app.get('/api/balance', async (req, res) => {
     const name = req.query.u;
     const r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
@@ -180,21 +214,20 @@ app.get('/api/balance', async (req, res) => {
         await client.query('INSERT INTO users (name, balance) VALUES ($1, 0)', [name]);
         res.redirect('/api/balance?u=' + encodeURIComponent(name));
     } else {
-        res.send(`${htmlHead}<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div class="panel" style="width:350px; text-align:center;"><h3>\${name} ASSETS</h3><div style="font-size:50px; font-family:'Orbitron'; margin:20px 0; color:var(--gold);">\${r.rows[0].balance}</div><button class="btn btn-check" onclick="location.href='/'">RETURN</button></div></div></body></html>`);
+        res.send(`${htmlHead}<div style="display:flex;justify-content:center;align-items:center;height:100vh;"><div class="panel" style="width:350px; text-align:center;"><h3>\${name} VAULT</h3><div style="font-size:50px; font-family:'Orbitron'; margin:20px 0; color:var(--gold);">\${r.rows[0].balance}</div><button class="btn btn-check" onclick="location.href='/'">RETURN</button></div></div></body></html>`);
     }
 });
 
-// 转账逻辑
 app.get('/api/pay', async (req, res) => {
     const { f, t, a } = req.query;
     try {
         const amt = Math.abs(parseInt(a));
         const s = await client.query('UPDATE users SET balance = balance - $1 WHERE name = $2 AND balance >= $1', [amt, f]);
-        if (s.rowCount === 0) return res.send("Access Denied: Insufficient Funds.");
+        if (s.rowCount === 0) return res.send("Access Denied: Wallet Empty!");
         await client.query('INSERT INTO users (name, balance) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET balance = users.balance + $2', [t, amt]);
         await client.query('INSERT INTO logs (sender, receiver, amount) VALUES ($1, $2, $3)', [f, t, amt]);
         res.redirect('/');
-    } catch (e) { res.send("TransFail"); }
+    } catch (e) { res.send("SystemFail"); }
 });
 
 startServer();
