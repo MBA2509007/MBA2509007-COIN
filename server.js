@@ -36,10 +36,13 @@ const getLayout = (content) => `
     <style>
         :root { --gold: #f0b90b; --bg: #050505; --panel: rgba(13, 13, 13, 0.95); --border: #222; }
         body { background: var(--bg); color: #fff; font-family: 'Roboto Mono', monospace; margin: 0; overflow: hidden; }
-        .header { position: fixed; top: 0; width: 100%; height: 80px; background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); border-bottom: 1px solid var(--border); display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .supply-tag { font-family: 'Orbitron'; font-size: 14px; color: var(--gold); letter-spacing: 2px; }
-        #live-clock { font-size: 10px; color: #555; margin-top: 5px; letter-spacing: 1px; }
-        .container { display: flex; height: 100vh; padding-top: 80px; box-sizing: border-box; }
+        
+        /* 顶部导航：实现并排效果 */
+        .header { position: fixed; top: 0; width: 100%; height: 70px; background: rgba(0,0,0,0.9); backdrop-filter: blur(15px); border-bottom: 1px solid var(--border); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .header-content { display: flex; align-items: center; font-family: 'Orbitron'; font-size: 14px; color: var(--gold); letter-spacing: 2px; text-transform: uppercase; }
+        .separator { margin: 0 15px; opacity: 0.5; }
+
+        .container { display: flex; height: 100vh; padding-top: 70px; box-sizing: border-box; }
         .visual { flex: 1; position: relative; }
         .sidebar { width: 420px; background: var(--panel); border-left: 1px solid var(--border); padding: 30px; display: flex; flex-direction: column; z-index: 10; overflow-y: auto; }
         .card { background: #000; border: 1px solid var(--border); padding: 22px; border-radius: 12px; margin-bottom: 25px; }
@@ -58,17 +61,19 @@ const getLayout = (content) => `
 </html>`;
 
 app.get('/', async (req, res) => {
-    if (!isDbReady) return res.send(getLayout('<div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#f0b90b;font-family:Orbitron;">CONNECTING_TO_QUANTUM_NODE...</div>'));
+    if (!isDbReady) return res.send(getLayout('<div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#f0b90b;font-family:Orbitron;">INITIALIZING_QUANTUM_CORE...</div>'));
     try {
         const stats = await client.query('SELECT SUM(balance) as b FROM users');
         const logs = await client.query('SELECT * FROM logs ORDER BY time DESC LIMIT 10');
         const total = stats.rows[0].b || 0;
         let logHtml = logs.rows.map(l => `<div class="log-item"><span>${l.sender} → ${l.receiver}</span><b style="color:var(--gold);">+${l.amount.toLocaleString()} COIN</b></div>`).join('');
+        
         res.send(getLayout(`
             <div class="header">
-                <div style="text-align:center;">
-                    <div class="supply-tag">EXCHANGE RESERVE: ${total.toLocaleString()} COIN</div>
-                    <div id="live-clock">LOADING_CLOCK...</div>
+                <div class="header-content">
+                    <span id="live-clock">LOADING...</span>
+                    <span class="separator">/</span>
+                    <span>EXCHANGE RESERVE: ${total.toLocaleString()} COIN</span>
                 </div>
             </div>
             <div class="container">
@@ -100,12 +105,15 @@ app.get('/', async (req, res) => {
                 function res(){ w=c.width=c.parentElement.offsetWidth; h=c.height=c.parentElement.offsetHeight; pts=[]; for(let i=0;i<450;i++){ let t=Math.random()*6.28, a=Math.acos(Math.random()*2-1); pts.push({x:Math.sin(a)*Math.cos(t),y:Math.sin(a)*Math.sin(t),z:Math.cos(a)}); } }
                 let r=0; function draw(){ x.fillStyle='#050505'; x.fillRect(0,0,w,h); r+=0.0035; x.save(); x.translate(w/2,h/2); pts.forEach(p=>{ let x1=p.x*Math.cos(r)-p.z*Math.sin(r), z1=p.z*Math.cos(r)+p.x*Math.sin(r); let s=(z1+1.2)/2.4; x.fillStyle="rgba(240,185,11,"+s+")"; x.beginPath(); x.arc(x1*Math.min(w,h)*0.38,p.y*Math.min(w,h)*0.38,s*1.6,0,7); x.fill(); }); x.restore(); requestAnimationFrame(draw); }
                 window.onresize=res; res(); draw();
+
                 function updateClock() {
                     const now = new Date();
                     const opt = { year:'numeric', month:'short', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false };
+                    // 格式示例: APR 06, 2026 03:45:12
                     document.getElementById('live-clock').innerText = now.toLocaleString('en-US', opt).toUpperCase();
                 }
                 setInterval(updateClock, 1000); updateClock();
+
                 function sw(m){ document.getElementById('box-tx').style.display=m==='tx'?'block':'none'; document.getElementById('box-rg').style.display=m==='rg'?'block':'none'; document.getElementById('t1').className=m==='tx'?'tab-btn active':'tab-btn'; document.getElementById('t2').className=m==='rg'?'tab-btn active':'tab-btn'; }
                 function reg(){ const n=document.getElementById('rn').value, p=document.getElementById('rp').value; if(n&&p) location.href='/api/reg?u='+encodeURIComponent(n)+'&p='+p; }
                 function send(){ const f=document.getElementById('f').value, p=document.getElementById('p').value, t=document.getElementById('t').value, a=document.getElementById('a').value; if(f&&p&&t&&a) location.href='/api/pay?f='+encodeURIComponent(f)+'&p='+p+'&t='+encodeURIComponent(t)+'&a='+a; }
@@ -115,11 +123,11 @@ app.get('/', async (req, res) => {
     } catch (e) { res.send(getLayout("ERROR_REBOOTING...")); }
 });
 
+// API 逻辑保持不变
 app.get('/api/reg', async (req, res) => {
     try { await client.query('INSERT INTO users (name, balance, pin) VALUES ($1, 0, $2)', [req.query.u, req.query.p]); res.send("<script>alert('Success.');location.href='/';</script>"); }
     catch (e) { res.send("<script>alert('Error.');location.href='/';</script>"); }
 });
-
 app.get('/api/pay', async (req, res) => {
     const { f, p, t, a } = req.query;
     try {
@@ -133,7 +141,6 @@ app.get('/api/pay', async (req, res) => {
         res.redirect('/');
     } catch (e) { res.redirect('/'); }
 });
-
 app.get('/api/bal', async (req, res) => {
     try {
         const r = await client.query('SELECT balance FROM users WHERE name = $1', [req.query.u]);
