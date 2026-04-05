@@ -141,3 +141,62 @@ app.get('/api/pay', async (req, res) => {
 });
 
 startServer();
+// ... 前面的代码保持不变 ...
+
+app.get('/', async (req, res) => {
+    try {
+        // 修改这里：同时查询用户总数和币的总数
+        const stats = await client.query('SELECT COUNT(*) as count, SUM(balance) as total FROM users');
+        const logs = await client.query('SELECT * FROM logs ORDER BY time DESC LIMIT 5');
+        
+        const userCount = stats.rows[0].count;
+        const totalSupply = stats.rows[0].total || 0; // 如果没人，显示0
+
+        let logHtml = logs.rows.map(l => `<div style="border-bottom:1px solid #eee;padding:5px 0;">🐕 <b>${l.sender}</b> → ${l.amount} → <b>${l.receiver}</b></div>`).join('');
+
+        res.send(`
+            ${htmlHead}
+            <div class="container">
+                <img src="https://cryptologos.cc/logos/dogecoin-doge-logo.png" class="doge-logo">
+                <h1 style="margin:0; font-size:40px;">MBA2509007 COIN</h1>
+                <p>Very Currency! Much Professional!</p>
+                
+                <div class="main-card">
+                    <div class="status-box">
+                        <div style="font-size:12px; color:#8d7926; margin-bottom:5px;">GLOBAL NETWORK STATS</div>
+                        <b>${userCount}</b> Shibes | <b>${totalSupply.toLocaleString()}</b> Total WOWs
+                    </div>
+                    
+                    <button class="btn-moon" onclick="go('/api/balance?u='+prompt('Name?'))">🔍 CHECK MY WOWS</button>
+                    <hr style="border:1px solid #eee; margin:30px 0;">
+                    
+                    <input type="text" id="f" class="input-field" placeholder="From (Your Name)">
+                    <input type="text" id="t" class="input-field" placeholder="To (Friend Name)">
+                    <input type="number" id="a" class="input-field" placeholder="Amount">
+                    <button class="btn-moon" style="background:#28a745; box-shadow:0 6px 0 #1e7e34;" onclick="send()">🚀 SEND TO MOON</button>
+                    
+                    <div class="logs">
+                        <b style="color:var(--dg)">Recent Activity:</b><br>${logHtml || 'Waiting for first wow...'}
+                    </div>
+                </div>
+            </div>
+            <script>
+                async function update(){
+                    try {
+                        const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=dogecoin&include_24hr_change=true');
+                        const d = await r.json();
+                        document.getElementById('tk').innerHTML = "DOGE: $" + d.dogecoin.usd + " (" + d.dogecoin.usd_24h_change.toFixed(2) + "%) | MBA2509007: $1.00";
+                    } catch(e){}
+                }
+                setInterval(update, 15000); update();
+                function go(url){ location.href = url; }
+                function send(){
+                    const f=document.getElementById('f').value, t=document.getElementById('t').value, a=document.getElementById('a').value;
+                    if(f&&t&&a) go('/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a);
+                }
+            </script>
+        </body></html>`);
+    } catch(e) { res.send("Doge is waking up... Refresh!"); }
+});
+
+// ... 后面的代码（balance 和 pay）保持不变 ...
