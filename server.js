@@ -8,20 +8,26 @@ const client = new Client({
     ssl: { rejectUnauthorized: false }
 });
 
+// 核心初始化逻辑
 async function startServer() {
     try {
         await client.connect();
+        // 1. 初始化表结构
         await client.query('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance INTEGER)');
         await client.query('CREATE TABLE IF NOT EXISTS logs (id SERIAL PRIMARY KEY, sender TEXT, receiver TEXT, amount INTEGER, time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
         
-        // 自动校准总量为 1,000,000
+        // 2. 强制总量平衡：Admin 拥有 1,000,000，其余人清零
         await client.query("UPDATE users SET balance = 0 WHERE name != 'Admin'");
         await client.query("INSERT INTO users (name, balance) VALUES ('Admin', 1000000) ON CONFLICT (name) DO UPDATE SET balance = 1000000");
-    } catch (err) { console.error("DB Error:", err.message); }
+        
+        console.log("🚀 System Optimized: Supply Locked at 1,000,000.");
+    } catch (err) {
+        console.error("Critical DB Error:", err.message);
+    }
     app.listen(port);
 }
 
-// 静态文件服务，确保能读取根目录下的图片
+// 静态资源托管（确保图片能被读取）
 app.use(express.static('.'));
 
 const htmlHead = `
@@ -29,109 +35,116 @@ const htmlHead = `
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>MBA2509007 GLOBAL TERMINAL</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Play:wght@400;700&display=swap" rel="stylesheet">
+    <title>MBA2509007 TERMINAL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Roboto+Mono&display=swap" rel="stylesheet">
     <style>
-        :root { --bronze: #c99c54; --gold: #f0b90b; --bg: #050505; --panel: #121212; }
-        body { background: var(--bg); color: #fff; font-family: 'Play', sans-serif; margin: 0; overflow: hidden; }
-        .top-bar { position: fixed; top: 0; width: 100%; height: 80px; background: rgba(0,0,0,0.9); border-bottom: 1px solid #333; display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .total-display { font-family: 'Orbitron', sans-serif; font-size: 26px; color: var(--bronze); text-shadow: 0 0 15px rgba(201,156,84,0.4); }
-        .wrapper { display: flex; height: 100vh; padding-top: 80px; box-sizing: border-box; }
-        .left-zone { flex: 1; background: #000; position: relative; }
-        .right-zone { width: 450px; background: var(--panel); border-left: 1px solid #333; padding: 40px; display: flex; flex-direction: column; z-index: 10; }
-        .coin-img { width: 150px; height: 150px; border-radius: 50%; border: 3px solid var(--bronze); box-shadow: 0 0 30px rgba(201,156,84,0.5); margin-bottom: 15px; object-fit: cover; }
-        .btn { width: 100%; padding: 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; font-family: 'Orbitron', sans-serif; transition: 0.3s; }
-        .btn-check { background: #1a1a1a; color: #fff; border: 1px solid var(--bronze); margin-bottom: 20px; }
-        .btn-send { background: var(--gold); color: #000; }
-        .panel { background: #1e1e1e; padding: 20px; border-radius: 12px; border: 1px solid #333; }
-        input { width: 100%; padding: 15px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: var(--gold); border-radius: 6px; box-sizing: border-box; }
+        :root { --gold: #c99c54; --bright: #f0b90b; --bg: #050505; }
+        body { background: var(--bg); color: #fff; font-family: 'Roboto Mono', monospace; margin: 0; overflow: hidden; }
+        .top-bar { position: fixed; top: 0; width: 100%; height: 70px; background: rgba(0,0,0,0.95); border-bottom: 1px solid #222; display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .total { font-family: 'Orbitron', sans-serif; font-size: 24px; color: var(--gold); }
+        .wrapper { display: flex; height: 100vh; padding-top: 70px; box-sizing: border-box; }
+        .left { flex: 1; background: #000; }
+        .right { width: 420px; background: #0a0a0a; border-left: 1px solid #222; padding: 30px; display: flex; flex-direction: column; }
+        .coin-box { text-align: center; margin-bottom: 30px; }
+        .coin-img { width: 140px; height: 140px; border-radius: 50%; border: 2px solid var(--gold); box-shadow: 0 0 20px rgba(201,156,84,0.3); }
+        .panel { background: #111; padding: 20px; border-radius: 10px; border: 1px solid #333; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: var(--bright); border-radius: 4px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 15px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Orbitron'; font-weight: bold; transition: 0.2s; }
+        .btn-check { background: transparent; color: var(--gold); border: 1px solid var(--gold); margin-bottom: 20px; }
+        .btn-send { background: var(--bright); color: #000; }
+        .btn:hover { opacity: 0.8; transform: translateY(-1px); }
     </style>
 </head>
-<body>
-`;
+<body>`;
 
-// 主页渲染
+// 主页接口
 app.get('/', async (req, res) => {
     try {
         const stats = await client.query('SELECT SUM(balance) as b FROM users');
         const total = stats.rows[0].b || 1000000;
         res.send(`${htmlHead}
-    <div class="top-bar"><div class="total-display">TOTAL SUPPLY: ${Number(total).toLocaleString()} / 1,000,000 WOW</div></div>
+    <div class="top-bar"><div class="total">SUPPLY: ${Number(total).toLocaleString()} / 1,000,000 WOW</div></div>
     <div class="wrapper">
-        <div class="left-zone"><canvas id="nodeCanvas"></canvas></div>
-        <div class="right-zone">
-            <div style="text-align:center;">
-                <img src="/coin.jpg" class="coin-img" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
-                <h2 style="font-family:'Orbitron'; color:var(--bronze);">GLOBAL TERMINAL</h2>
+        <div class="left"><canvas id="canvas"></canvas></div>
+        <div class="right">
+            <div class="coin-box">
+                <img src="/古代中国金币设计.jpg" class="coin-img" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
+                <h2 style="font-family:'Orbitron'; color:var(--gold); margin-top:15px;">GLOBAL RESERVE</h2>
             </div>
             <button class="btn btn-check" onclick="check()">🔍 ACCESS VAULT</button>
             <div class="panel">
-                <input type="text" id="f" placeholder="Sender"><input type="text" id="t" placeholder="Receiver"><input type="number" id="a" placeholder="Amount">
+                <input type="text" id="f" placeholder="Sender Name">
+                <input type="text" id="t" placeholder="Receiver Name">
+                <input type="number" id="a" placeholder="Amount">
                 <button class="btn btn-send" onclick="send()">🚀 EXECUTE TRANSFER</button>
             </div>
         </div>
     </div>
     <script>
-        const canvas = document.getElementById('nodeCanvas'); const ctx = canvas.getContext('2d');
-        let width, height, nodes = [];
+        const cvs = document.getElementById('canvas'); const ctx = cvs.getContext('2d');
+        let w, h, pts = [];
         function init() {
-            width = canvas.width = canvas.parentElement.offsetWidth; height = canvas.height = canvas.parentElement.offsetHeight;
-            for(let i=0; i<100; i++) nodes.push({x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()-0.5});
+            w = cvs.width = cvs.parentElement.offsetWidth; h = cvs.height = cvs.parentElement.offsetHeight;
+            pts = []; for(let i=0; i<80; i++) pts.push({x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()-0.5});
         }
-        let ay = 0;
+        let rot = 0;
         function draw() {
-            ctx.fillStyle = '#000'; ctx.fillRect(0,0,width,height); const r = Math.min(width,height)*0.4; ay+=0.005;
-            ctx.save(); ctx.translate(width/2, height/2);
-            nodes.forEach(p => {
-                let x = p.x*Math.cos(ay)-p.z*Math.sin(ay); let z = p.z*Math.cos(ay)+p.x*Math.sin(ay);
-                ctx.fillStyle = "rgba(201,156,84,"+(z+1)+")"; ctx.beginPath(); ctx.arc(x*r, p.y*r, 2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h); const R = Math.min(w,h)*0.35; rot += 0.005;
+            ctx.save(); ctx.translate(w/2, h/2);
+            pts.forEach(p => {
+                let x = p.x*Math.cos(rot)-p.z*Math.sin(rot); let z = p.z*Math.cos(rot)+p.x*Math.sin(rot);
+                ctx.fillStyle = "rgba(201,156,84,"+(z+1)+")"; ctx.beginPath(); ctx.arc(x*R, p.y*R, 3, 0, Math.PI*2); ctx.fill();
             });
             ctx.restore(); requestAnimationFrame(draw);
         }
         init(); draw();
-        function check(){ const n=prompt("Name?"); if(n) location.href='/api/balance?u='+encodeURIComponent(n); }
+        function check(){ const n=prompt("Identify Name?"); if(n) location.href='/api/balance?u='+encodeURIComponent(n); }
         function send(){
             const f=document.getElementById('f').value, t=document.getElementById('t').value, a=document.getElementById('a').value;
             if(f&&t&&a) location.href='/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a;
         }
     </script>
 </body></html>`);
-    } catch(e) { res.send("Error"); }
+    } catch(e) { res.status(500).send("Node Error"); }
 });
 
-// 余额查询页面 - 已修复死循环
+// 余额接口（优化版：杜绝 Redirect 循环）
 app.get('/api/balance', async (req, res) => {
     const name = req.query.u;
-    let r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
+    if(!name) return res.redirect('/');
     
-    // 如果没有用户，直接插入并手动设置变量，不再使用 redirect
+    let r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
+    let balance = 0;
+
     if (r.rows.length === 0) {
         await client.query('INSERT INTO users (name, balance) VALUES ($1, 0)', [name]);
-        r = { rows: [{ balance: 0 }] };
+        balance = 0;
+    } else {
+        balance = r.rows[0].balance;
     }
 
     res.send(`${htmlHead}
     <div style="display:flex;justify-content:center;align-items:center;height:100vh;">
-        <div class="panel" style="width:350px; text-align:center; border: 2px solid var(--bronze);">
-            <img src="/coin.jpg" style="width:100px; border-radius:50%; margin-bottom:15px;">
-            <h3 style="color:var(--bronze); font-family:'Orbitron';">${name} VAULT</h3>
-            <div style="font-size:50px; font-family:'Orbitron'; color:var(--gold); margin-bottom:20px;">${r.rows[0].balance}</div>
-            <button class="btn btn-check" onclick="location.href='/'">RETURN</button>
+        <div class="panel" style="width:360px; text-align:center; border: 1px solid var(--gold);">
+            <img src="/古代中国金币设计.jpg" style="width:100px; border-radius:50%; margin-bottom:15px;" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
+            <h3 style="color:var(--gold); font-family:'Orbitron';">${name}</h3>
+            <div style="font-size:48px; font-family:'Orbitron'; color:var(--bright); margin:20px 0;">${balance}</div>
+            <button class="btn btn-check" onclick="location.href='/'">BACK TO TERMINAL</button>
         </div>
     </div></body></html>`);
 });
 
-// 转账逻辑
+// 转账接口
 app.get('/api/pay', async (req, res) => {
     const { f, t, a } = req.query;
     try {
         const amt = Math.abs(parseInt(a));
         const s = await client.query('UPDATE users SET balance = balance - $1 WHERE name = $2 AND balance >= $1', [amt, f]);
-        if (s.rowCount === 0) return res.send("Insufficient funds.");
+        if (s.rowCount === 0) return res.send("<script>alert('Insufficient Balance');history.back();</script>");
         await client.query('INSERT INTO users (name, balance) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET balance = users.balance + $2', [t, amt]);
         await client.query('INSERT INTO logs (sender, receiver, amount) VALUES ($1, $2, $3)', [f, t, amt]);
         res.redirect('/');
-    } catch (e) { res.send("Transfer failed."); }
+    } catch (e) { res.send("Transaction Failed"); }
 });
 
 startServer();
