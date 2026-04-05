@@ -2,23 +2,40 @@ const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
-let balance = 0; 
+// 模拟数据库：这里存着两个账户的钱
+let accounts = {
+    "admin": 1000000, // 你（管理员）
+    "friend": 0       // 你的朋友
+};
 
 app.get('/', (req, res) => {
     res.send(`
         <html>
-            <head><title>MBA2509007 COIN</title></head>
+            <head><title>MBA2509007 Exchange</title></head>
             <body style="background:#0b0e11; color:white; text-align:center; font-family:sans-serif; padding:50px;">
-                <h1 style="color:#f0b90b;">MBA2509007 COIN 交易所</h1>
-                <div style="background:#1e2329; padding:20px; border-radius:10px; display:inline-block; border: 1px solid #f0b90b;">
-                    <h2>我的资产: <span id="bal">${balance}</span> MBA2509007</h2>
-                    <button onclick="mint()" style="background:#f0b90b; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold;">管理员印钞 (Mint)</button>
+                <h1 style="color:#f0b90b;">MBA2509007 国际交易所</h1>
+                
+                <div style="background:#1e2329; padding:20px; border-radius:10px; display:inline-block; border: 1px solid #f0b90b; margin:10px;">
+                    <h3>我的账户 (Admin)</h3>
+                    <h2 style="color:#f0b90b;">${accounts.admin} COIN</h2>
                 </div>
+
+                <div style="background:#1e2329; padding:20px; border-radius:10px; display:inline-block; border: 1px solid #28a745; margin:10px;">
+                    <h3>朋友账户 (Friend)</h3>
+                    <h2 style="color:#28a745;">${accounts.friend} COIN</h2>
+                </div>
+
+                <br><br>
+                <button onclick="transfer()" style="background:#f0b90b; border:none; padding:15px 30px; border-radius:5px; cursor:pointer; font-weight:bold; font-size:16px;">
+                    💸 免费转账给朋友
+                </button>
+
                 <script>
-                    async function mint() {
-                        const pwd = prompt("请输入管理员暗号：");
-                        const val = prompt("请输入数量：");
-                        if(pwd && val) { window.location.href = '/api/mint?pwd=' + pwd + '&val=' + val; }
+                    function transfer() {
+                        const amount = prompt("请输入要转账给朋友的金额：");
+                        if(amount && !isNaN(amount)) {
+                            window.location.href = '/api/transfer?amount=' + amount;
+                        }
                     }
                 </script>
             </body>
@@ -26,14 +43,16 @@ app.get('/', (req, res) => {
     `);
 });
 
-app.get('/api/mint', (req, res) => {
-    const { pwd, val } = req.query;
-    if (pwd === "mba666") { 
-        balance += parseInt(val);
-        res.send("<h1>增发成功！</h1><a href='/'>返回首页</a>");
+// 转账逻辑：从 Admin 扣钱，给 Friend 加钱
+app.get('/api/transfer', (req, res) => {
+    const amount = parseInt(req.query.amount);
+    if (accounts.admin >= amount) {
+        accounts.admin -= amount;
+        accounts.friend += amount;
+        res.send("<h1>✅ 转账成功！</h1><p>已成功转出 " + amount + " 币。</p><a href='/'>返回首页</a>");
     } else {
-        res.send("<h1>暗号错误！</h1><a href='/'>返回首页</a>");
+        res.send("<h1>❌ 余额不足！</h1><p>你没有那么多币可以转账。</p><a href='/'>返回首页</a>");
     }
 });
 
-app.listen(port, () => console.log('MBA2509007 COIN 运行中'));
+app.listen(port, () => console.log('交易所升级版运行中'));
