@@ -8,143 +8,145 @@ const client = new Client({
     ssl: { rejectUnauthorized: false }
 });
 
-// 核心初始化逻辑
-async function startServer() {
+async function initDB() {
     try {
         await client.connect();
-        // 1. 初始化表结构
         await client.query('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance INTEGER)');
-        await client.query('CREATE TABLE IF NOT EXISTS logs (id SERIAL PRIMARY KEY, sender TEXT, receiver TEXT, amount INTEGER, time TIMESTAMP DEFAULT CURRENT_TIMESTAMP)');
-        
-        // 2. 强制总量平衡：Admin 拥有 1,000,000，其余人清零
-        await client.query("UPDATE users SET balance = 0 WHERE name != 'Admin'");
         await client.query("INSERT INTO users (name, balance) VALUES ('Admin', 1000000) ON CONFLICT (name) DO UPDATE SET balance = 1000000");
-        
-        console.log("🚀 System Optimized: Supply Locked at 1,000,000.");
-    } catch (err) {
-        console.error("Critical DB Error:", err.message);
-    }
-    app.listen(port);
+        // 修正非 Admin 用户的初始状态，确保总量 1,000,000
+        await client.query("UPDATE users SET balance = 0 WHERE name != 'Admin'");
+    } catch (e) { console.error("DB Error"); }
 }
+initDB();
 
-// 静态资源托管（确保图片能被读取）
 app.use(express.static('.'));
 
-const htmlHead = `
+// 主页面渲染
+app.get('/', (req, res) => {
+    res.send(`
 <!DOCTYPE html>
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
     <title>MBA2509007 TERMINAL</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&family=Noto+Sans+SC:wght@300&display=swap" rel="stylesheet">
     <style>
-        :root { --gold: #c99c54; --bright: #f0b90b; --bg: #050505; }
-        body { background: var(--bg); color: #fff; font-family: 'Roboto Mono', monospace; margin: 0; overflow: hidden; }
-        .top-bar { position: fixed; top: 0; width: 100%; height: 70px; background: rgba(0,0,0,0.95); border-bottom: 1px solid #222; display: flex; justify-content: center; align-items: center; z-index: 100; }
-        .total { font-family: 'Orbitron', sans-serif; font-size: 24px; color: var(--gold); }
-        .wrapper { display: flex; height: 100vh; padding-top: 70px; box-sizing: border-box; }
-        .left { flex: 1; background: #000; }
-        .right { width: 420px; background: #0a0a0a; border-left: 1px solid #222; padding: 30px; display: flex; flex-direction: column; }
-        .coin-box { text-align: center; margin-bottom: 30px; }
-        .coin-img { width: 140px; height: 140px; border-radius: 50%; border: 2px solid var(--gold); box-shadow: 0 0 20px rgba(201,156,84,0.3); }
-        .panel { background: #111; padding: 20px; border-radius: 10px; border: 1px solid #333; }
-        input { width: 100%; padding: 12px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: var(--bright); border-radius: 4px; box-sizing: border-box; }
-        .btn { width: 100%; padding: 15px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Orbitron'; font-weight: bold; transition: 0.2s; }
-        .btn-check { background: transparent; color: var(--gold); border: 1px solid var(--gold); margin-bottom: 20px; }
-        .btn-send { background: var(--bright); color: #000; }
-        .btn:hover { opacity: 0.8; transform: translateY(-1px); }
+        :root { --gold: #c99c54; --dim: #1a1a1a; --bg: #050505; }
+        body { background: var(--bg); color: #fff; font-family: 'Noto Sans SC', sans-serif; margin: 0; overflow: hidden; }
+        
+        /* 顶部状态栏 */
+        .header { height: 60px; border-bottom: 1px solid #222; display: flex; justify-content: center; align-items: center; background: rgba(0,0,0,0.8); }
+        .supply { font-family: 'Orbitron'; color: var(--gold); font-size: 20px; letter-spacing: 2px; }
+
+        .container { display: flex; height: calc(100vh - 60px); }
+        
+        /* 左侧：动态背景 */
+        .visuals { flex: 1; position: relative; background: radial-gradient(circle at center, #111 0%, #000 100%); }
+        
+        /* 右侧：控制面板 */
+        .panel { width: 400px; background: #0a0a0a; border-left: 1px solid #222; padding: 40px; display: flex; flex-direction: column; }
+        .coin-wrap { text-align: center; margin-bottom: 40px; }
+        .coin { width: 160px; height: 160px; border-radius: 50%; border: 2px solid var(--gold); box-shadow: 0 0 30px rgba(201,156,84,0.2); }
+        
+        .input-group { background: var(--dim); padding: 20px; border-radius: 12px; border: 1px solid #333; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; background: #000; border: 1px solid #444; color: var(--gold); border-radius: 4px; box-sizing: border-box; font-family: 'Orbitron'; }
+        
+        .btn { width: 100%; padding: 15px; border-radius: 6px; border: none; cursor: pointer; font-family: 'Orbitron'; font-weight: bold; transition: 0.3s; margin-top: 10px; }
+        .btn-main { background: var(--gold); color: #000; }
+        .btn-sub { background: transparent; color: var(--gold); border: 1px solid var(--gold); margin-top: 20px; }
+        .btn:hover { filter: brightness(1.2); transform: translateY(-2px); }
+
+        /* 弹窗样式 */
+        #msg { position: fixed; bottom: 20px; right: 20px; padding: 15px 25px; border-radius: 4px; background: var(--dim); border-left: 4px solid var(--gold); display: none; z-index: 100; }
     </style>
 </head>
-<body>`;
-
-// 主页接口
-app.get('/', async (req, res) => {
-    try {
-        const stats = await client.query('SELECT SUM(balance) as b FROM users');
-        const total = stats.rows[0].b || 1000000;
-        res.send(`${htmlHead}
-    <div class="top-bar"><div class="total">SUPPLY: ${Number(total).toLocaleString()} / 1,000,000 WOW</div></div>
-    <div class="wrapper">
-        <div class="left"><canvas id="canvas"></canvas></div>
-        <div class="right">
-            <div class="coin-box">
-                <img src="/古代中国金币设计.jpg" class="coin-img" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
-                <h2 style="font-family:'Orbitron'; color:var(--gold); margin-top:15px;">GLOBAL RESERVE</h2>
+<body>
+    <div class="header"><div class="supply">MBA2509007 : 1,000,000 WOW</div></div>
+    <div class="container">
+        <div class="visuals"><canvas id="gl"></canvas></div>
+        <div class="panel">
+            <div class="coin-wrap">
+                <img src="/古代中国金币设计.jpg" class="coin" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
+                <h2 style="font-family:'Orbitron'; color:var(--gold); margin-top:20px;">SYSTEM TERMINAL</h2>
             </div>
-            <button class="btn btn-check" onclick="check()">🔍 ACCESS VAULT</button>
-            <div class="panel">
-                <input type="text" id="f" placeholder="Sender Name">
-                <input type="text" id="t" placeholder="Receiver Name">
-                <input type="number" id="a" placeholder="Amount">
-                <button class="btn btn-send" onclick="send()">🚀 EXECUTE TRANSFER</button>
+            
+            <div class="input-group">
+                <input type="text" id="f" placeholder="FROM ID">
+                <input type="text" id="t" placeholder="TO ID">
+                <input type="number" id="a" placeholder="AMOUNT">
+                <button class="btn btn-main" onclick="doAction('pay')">EXECUTE TRANSFER</button>
             </div>
+            
+            <button class="btn btn-sub" onclick="doAction('balance')">QUERY VAULT</button>
         </div>
     </div>
+    <div id="msg"></div>
+
     <script>
-        const cvs = document.getElementById('canvas'); const ctx = cvs.getContext('2d');
-        let w, h, pts = [];
-        function init() {
-            w = cvs.width = cvs.parentElement.offsetWidth; h = cvs.height = cvs.parentElement.offsetHeight;
-            pts = []; for(let i=0; i<80; i++) pts.push({x: Math.random()-0.5, y: Math.random()-0.5, z: Math.random()-0.5});
+        // 核心逻辑：不再刷新页面，改用异步获取数据
+        async function doAction(type) {
+            const f = document.getElementById('f').value;
+            const t = document.getElementById('t').value;
+            const a = document.getElementById('a').value;
+            const msgBox = document.getElementById('msg');
+
+            let url = type === 'pay' ? \`/api/pay?f=\${f}&t=\${t}&a=\${a}\` : \`/api/balance?u=\${f}\`;
+            
+            if(type === 'balance' && !f) return alert("Please enter FROM ID to query.");
+
+            const res = await fetch(url);
+            const data = await res.text();
+            
+            msgBox.style.display = 'block';
+            msgBox.innerHTML = data;
+            setTimeout(() => { msgBox.style.display = 'none'; }, 5000);
         }
-        let rot = 0;
+
+        // 背景动画优化
+        const cvs = document.getElementById('gl'); const ctx = cvs.getContext('2d');
+        let w, h;
+        function resize() { w = cvs.width = cvs.parentElement.offsetWidth; h = cvs.height = cvs.parentElement.offsetHeight; }
+        window.onresize = resize; resize();
+
         function draw() {
-            ctx.fillStyle = '#000'; ctx.fillRect(0,0,w,h); const R = Math.min(w,h)*0.35; rot += 0.005;
-            ctx.save(); ctx.translate(w/2, h/2);
-            pts.forEach(p => {
-                let x = p.x*Math.cos(rot)-p.z*Math.sin(rot); let z = p.z*Math.cos(rot)+p.x*Math.sin(rot);
-                ctx.fillStyle = "rgba(201,156,84,"+(z+1)+")"; ctx.beginPath(); ctx.arc(x*R, p.y*R, 3, 0, Math.PI*2); ctx.fill();
-            });
-            ctx.restore(); requestAnimationFrame(draw);
+            ctx.fillStyle = 'rgba(5,5,5,0.2)'; ctx.fillRect(0,0,w,h);
+            for(let i=0; i<3; i++) {
+                ctx.strokeStyle = i === 0 ? '#c99c54' : '#222';
+                ctx.beginPath();
+                ctx.arc(w/2, h/2, (Math.sin(Date.now()/1000 + i)*20) + 150 + i*50, 0, Math.PI*2);
+                ctx.stroke();
+            }
+            requestAnimationFrame(draw);
         }
-        init(); draw();
-        function check(){ const n=prompt("Identify Name?"); if(n) location.href='/api/balance?u='+encodeURIComponent(n); }
-        function send(){
-            const f=document.getElementById('f').value, t=document.getElementById('t').value, a=document.getElementById('a').value;
-            if(f&&t&&a) location.href='/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a;
-        }
+        draw();
     </script>
-</body></html>`);
-    } catch(e) { res.status(500).send("Node Error"); }
+</body>
+</html>
+    `);
 });
 
-// 余额接口（优化版：杜绝 Redirect 循环）
+// 余额 API (返回结果文本而非跳转)
 app.get('/api/balance', async (req, res) => {
     const name = req.query.u;
-    if(!name) return res.redirect('/');
-    
     let r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
-    let balance = 0;
-
     if (r.rows.length === 0) {
         await client.query('INSERT INTO users (name, balance) VALUES ($1, 0)', [name]);
-        balance = 0;
-    } else {
-        balance = r.rows[0].balance;
+        return res.send(\`New Identity Created: \${name} | Balance: 0 WOW\`);
     }
-
-    res.send(`${htmlHead}
-    <div style="display:flex;justify-content:center;align-items:center;height:100vh;">
-        <div class="panel" style="width:360px; text-align:center; border: 1px solid var(--gold);">
-            <img src="/古代中国金币设计.jpg" style="width:100px; border-radius:50%; margin-bottom:15px;" onerror="this.src='https://i.imgur.com/8K9M4sK.png'">
-            <h3 style="color:var(--gold); font-family:'Orbitron';">${name}</h3>
-            <div style="font-size:48px; font-family:'Orbitron'; color:var(--bright); margin:20px 0;">${balance}</div>
-            <button class="btn btn-check" onclick="location.href='/'">BACK TO TERMINAL</button>
-        </div>
-    </div></body></html>`);
+    res.send(\`Vault ID: \${name} | Current Balance: \${r.rows[0].balance} WOW\`);
 });
 
-// 转账接口
+// 转账 API (返回结果文本而非跳转)
 app.get('/api/pay', async (req, res) => {
     const { f, t, a } = req.query;
+    if(!f || !t || !a) return res.send("Missing Parameters");
     try {
         const amt = Math.abs(parseInt(a));
         const s = await client.query('UPDATE users SET balance = balance - $1 WHERE name = $2 AND balance >= $1', [amt, f]);
-        if (s.rowCount === 0) return res.send("<script>alert('Insufficient Balance');history.back();</script>");
+        if (s.rowCount === 0) return res.send("Insufficient funds or invalid ID.");
         await client.query('INSERT INTO users (name, balance) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET balance = users.balance + $2', [t, amt]);
-        await client.query('INSERT INTO logs (sender, receiver, amount) VALUES ($1, $2, $3)', [f, t, amt]);
-        res.redirect('/');
-    } catch (e) { res.send("Transaction Failed"); }
+        res.send(\`Transfer Success: \${amt} WOW sent to \${t}\`);
+    } catch (e) { res.send("System Error"); }
 });
 
-startServer();
+app.listen(port);
