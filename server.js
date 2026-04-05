@@ -1,67 +1,70 @@
 const express = require('express');
+const { Client } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// 核心数据库：存储所有人的钱
-let db = {
-    "Admin": 1000000 // 你初始有100万
-};
+// 1. 自动读取你在 Render 设置的 DATABASE_URL “钥匙”
+const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false } // Render 数据库必须开启 SSL
+});
 
-app.get('/', (req, res) => {
-    res.send(`
-        <html>
-            <head><title>MBA2509007 Wallet System</title></head>
-            <body style="background:#0b0e11; color:white; text-align:center; font-family:sans-serif; padding:50px;">
-                <h1 style="color:#f0b90b;">MBA2509007 个人钱包系统</h1>
-                
-                <div style="background:#1e2329; padding:20px; border-radius:10px; display:inline-block; border: 1px solid #f0b90b;">
-                    <h3>当前注册钱包总数: ${Object.keys(db).length} 个</h3>
-                    <button onclick="openWallet()" style="background:#f0b90b; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold; margin:5px;">🔍 查看/开通我的钱包</button>
-                    <button onclick="sendMoney()" style="background:#28a745; border:none; padding:10px 20px; border-radius:5px; cursor:pointer; font-weight:bold; color:white; margin:5px;">💸 立即转账</button>
-                </div>
+// 2. 初始化数据库：如果表不存在就创建它
+async function initDatabase() {
+    try {
+        await client.connect();
+        console.log("✅ 成功连接到永久数据库！");
+        // 创建 users 表：name 是名字（唯一），balance 是余额
+        await client.query('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance INTEGER)');
+        // 确保管理员 Admin 账户存在，初始 1,000,000 币
+        await client.query("INSERT INTO users (name, balance) VALUES ('Admin', 1000000) ON CONFLICT DO NOTHING");
+    } catch (err) {
+        console.error("❌ 数据库连接失败:", err);
+    }
+}
+initDatabase();
 
-                <div id="result" style="margin-top:20px; color:#f0b90b; font-size:20px;"></div>
-
-                <script>
-                    function openWallet() {
-                        const name = prompt("请输入你的名字开通/查看钱包：");
-                        if(name) { window.location.href = '/api/balance?user=' + name; }
-                    }
-                    function sendMoney() {
-                        const from = prompt("你的名字：");
-                        const to = prompt("转账给谁：");
-                        const amount = prompt("转账金额：");
-                        if(from && to && amount) {
-                            window.location.href = '/api/transfer?from=' + from + '&to=' + to + '&amount=' + amount;
+// 3. 首页界面
+app.get('/', async (req, res) => {
+    try {
+        const result = await client.query('SELECT COUNT(*) FROM users');
+        res.send(`
+            <html>
+                <head><title>MBA2509007 永久银行</title></head>
+                <body style="background:#0b0e11; color:white; text-align:center; font-family:sans-serif; padding:50px;">
+                    <h1 style="color:#f0b90b;">💰 MBA2509007 永久交易所</h1>
+                    <div style="background:#1e2329; padding:20px; border-radius:10px; display:inline-block; border: 1px solid #f0b90b;">
+                        <h3>系统状态：运行中 (已连接数据库)</h3>
+                        <p>目前已有户头：<span style="color:#f0b90b; font-weight:bold;">${result.rows[0].count}</span> 个</p>
+                        <hr style="border:0.5px solid #333;">
+                        <button onclick="openWallet()" style="background:#f0b90b; border:none; padding:12px 25px; border-radius:5px; cursor:pointer; font-weight:bold; margin:5px;">🔍 开户 / 查账</button>
+                        <button onclick="payMoney()" style="background:#28a745; border:none; padding:12px 25px; border-radius:5px; cursor:pointer; font-weight:bold; color:white; margin:5px;">💸 永久转账</button>
+                    </div>
+                    <script>
+                        function openWallet() {
+                            const name = prompt("请输入你的名字：");
+                            if(name) window.location.href = '/api/balance?u=' + encodeURIComponent(name);
                         }
-                    }
-                </script>
-            </body>
-        </html>
-    `);
-});
-
-// 接口：查看余额（如果没有这个用户，就自动帮他开户送10个币）
-app.get('/api/balance', (req, res) => {
-    const user = req.query.user;
-    if (!db[user]) {
-        db[user] = 10; // 新用户自动开户送10个币
-    }
-    res.send("<h1>" + user + " 的钱包</h1><h2>余额: " + db[user] + " COIN</h2><a href='/'>返回首页</a>");
-});
-
-// 接口：转账逻辑
-app.get('/api/transfer', (req, res) => {
-    const { from, to, amount } = req.query;
-    const val = parseInt(amount);
-    if (!db[from] || db[from] < val) {
-        res.send("<h1>❌ 转账失败！余额不足或账户不存在</h1><a href='/'>返回首页</a>");
-    } else {
-        if (!db[to]) db[to] = 0; // 如果接收方还没开户，自动帮他开户
-        db[from] -= val;
-        db[to] += val;
-        res.send("<h1>✅ 转账成功！</h1><p>" + from + " 已转账 " + val + " 给 " + to + "</p><a href='/'>返回首页</a>");
+                        function payMoney() {
+                            const f = prompt("你的名字：");
+                            const t = prompt("转给谁：");
+                            const a = prompt("转多少钱：");
+                            if(f && t && a) window.location.href = '/api/pay?f='+encodeURIComponent(f)+'&t='+encodeURIComponent(t)+'&a='+a;
+                        }
+                    </script>
+                </body>
+            </html>
+        `);
+    } catch (err) {
+        res.send("数据库读取错误，请检查 Render 的 Environment 设置。");
     }
 });
 
-app.listen(port, () => console.log('多用户系统已启动'));
+// 4. 开户与余额查询接口
+app.get('/api/balance', async (req, res) => {
+    const name = req.query.u;
+    const r = await client.query('SELECT balance FROM users WHERE name = $1', [name]);
+    if (r.rows.length === 0) {
+        // 新人开户，默认送 10 币
+        await client.query('INSERT INTO users (name, balance) VALUES ($1, 10)', [name]);
+        res.send("<h1>🎉 " + name + " 开户成功！</h1><h2>已赠送 10 个初始
