@@ -10,24 +10,20 @@ app.use(express.json());
 
 let client;
 
-// 1. 数据库初始化 (修复 Admin 余额和初始化逻辑)
-async function initDB() {
-    if (!process.env.DATABASE_URL) {
-        console.error("CRITICAL_ERROR: DATABASE_URL is missing in environment variables!");
-        return;
-    }
+// 1. 增强型数据库连接 (带自动重试)
+async function connectDB() {
+    const dbConfig = {
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false },
+    };
+
+    client = new Client(dbConfig);
 
     try {
-        client = new Client({
-            connectionString: process.env.DATABASE_URL,
-            ssl: { rejectUnauthorized: false },
-            connectionTimeoutMillis: 10000, 
-        });
-
         await client.connect();
-        console.log("DB_CONNECTED_SUCCESSFULLY");
+        console.log("DB_CONNECTED");
 
-        // 创建表
+        // 初始化表
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
                 name TEXT PRIMARY KEY,
@@ -36,280 +32,216 @@ async function initDB() {
             )
         `);
 
-        // 强制初始化/修复 Admin 账号 (确保余额为 1,000,000)
-        const adminHash = await bcrypt.hash("888888", 10);
+        // 强制初始化 Admin (1,000,000 余额)
+        const hash = await bcrypt.hash("888888", 10);
         await client.query(`
             INSERT INTO users (name, balance, pin_hash) 
             VALUES ('Admin', 1000000, $1) 
-            ON CONFLICT (name) DO UPDATE 
-            SET balance = 1000000, pin_hash = $1
-        `, [adminHash]);
-        
-        console.log("ADMIN_SYNC: Name: Admin | Balance: 1,000,000 | PIN: 888888");
+            ON CONFLICT (name) DO UPDATE SET balance = 1000000
+        `, [hash]);
+
     } catch (err) {
-        console.error("DB_INIT_ERROR:", err.message);
+        console.error("DB_CONNECTION_FAILED:", err.message);
+        setTimeout(connectDB, 5000); // 失败后 5 秒重连
     }
 }
 
-// 2. 视觉布局 (修复重叠问题)
+// 2. 彻底解决重叠的布局
 function layout(content, totalReserve = "1,000,000") {
     return `
     <!DOCTYPE html>
     <html>
     <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Quantum Financial Terminal</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Quantum Terminal</title>
         <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
         <style>
-            :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; }
-            body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
+            :root { --gold: #f0b90b; --neon-green: #00ff88; --bg: #050505; }
+            body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; height: 100vh; overflow: hidden; }
             
-            /* 顶部固定栏 */
-            .top-bar { 
-                position: fixed; top: 0; width: 100%; padding: 20px 40px; 
+            /* 顶部状态栏 - 提高 Z-INDEX 且固定高度 */
+            .header { 
+                position: fixed; top: 0; left: 0; width: 100%; height: 100px;
                 display: flex; justify-content: space-between; align-items: center;
-                background: linear-gradient(to bottom, rgba(0,0,0,0.95), transparent);
-                z-index: 1000; box-sizing: border-box;
+                padding: 0 40px; box-sizing: border-box; z-index: 9999;
+                background: linear-gradient(to bottom, #000 60%, transparent);
             }
-            .reserve-box { color: var(--gold); font-size: 18px; font-weight: 900; letter-spacing: 2px; flex: 1; }
-            .time-box { flex: 1; text-align: center; color: rgba(255,255,255,0.6); font-size: 14px; }
-            #live-clock { display: block; color: #fff; font-size: 18px; font-weight: 900; }
 
-            .rate-container { flex: 1; display: flex; justify-content: flex-end; }
+            .reserve-info { color: var(--gold); font-size: 1.2rem; font-weight: 900; }
             .rate-card { 
-                background: rgba(0, 255, 136, 0.1); 
-                border: 1px solid var(--neon-green);
-                padding: 8px 20px;
-                border-radius: 10px;
-                color: var(--neon-green);
-                font-size: 22px;
-                font-weight: 900;
-                box-shadow: 0 0 15px rgba(0,255,136,0.3);
+                border: 1px solid var(--neon-green); padding: 10px 20px; border-radius: 8px;
+                color: var(--neon-green); box-shadow: 0 0 15px rgba(0,255,136,0.2); font-weight: 900;
             }
 
-            .container { display: flex; height: 100vh; width: 100vw; }
-            .left-zone { flex: 1.2; position: relative; }
+            .main-frame { display: flex; height: 100vh; padding-top: 100px; box-sizing: border-box; }
+            
+            /* 左侧动画区 */
+            .visual-zone { flex: 1.2; position: relative; display: flex; align-items: center; justify-content: center; }
             #canvas { width: 100%; height: 100%; }
 
-            .right-zone { 
-                flex: 0.8; 
-                background: rgba(10,10,10,0.7); 
-                backdrop-filter: blur(15px); 
-                border-left: 1px solid rgba(255,255,255,0.05);
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                /* 关键修复：确保内容在 header 下方开始 */
-                padding-top: 140px; 
-                box-sizing: border-box;
-                overflow-y: auto;
+            /* 右侧操作区 - 增加垂直边距防止重叠 */
+            .action-zone { 
+                flex: 0.8; background: rgba(255,255,255,0.02); backdrop-filter: blur(20px);
+                border-left: 1px solid rgba(255,255,255,0.1);
+                display: flex; flex-direction: column; align-items: center;
+                padding: 60px 20px; box-sizing: border-box; overflow-y: auto;
             }
+
+            .terminal-card { width: 100%; max-width: 380px; }
+            h2 { color: var(--gold); text-transform: uppercase; letter-spacing: 4px; margin-bottom: 30px; font-size: 1.4rem; }
             
-            .panel { width: 85%; max-width: 400px; }
-            .card { background: rgba(255,255,255,0.03); padding: 30px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); }
-            h2 { color: var(--gold); margin-top: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 3px; }
-            
-            input { width: 100%; padding: 16px; margin: 10px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 8px; font-family: 'Orbitron'; box-sizing: border-box; }
-            button { width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); color: #000; border: none; border-radius: 8px; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; }
-            
-            .leaderboard { position: absolute; bottom: 40px; left: 40px; font-size: 12px; color: rgba(255,255,255,0.4); line-height: 2; }
+            input { width: 100%; padding: 15px; margin: 10px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 5px; font-family: 'Orbitron'; box-sizing: border-box; }
+            button { width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); color: #000; border: none; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; border-radius: 5px; transition: 0.3s; }
+            button:hover { opacity: 0.8; box-shadow: 0 0 20px var(--gold); }
 
             @media (max-width: 768px) {
-                .container { flex-direction: column; overflow-y: auto; }
-                .left-zone { height: 40vh; }
-                .right-zone { padding-top: 100px; padding-bottom: 50px; }
+                .main-frame { flex-direction: column; overflow-y: auto; }
+                .header { padding: 0 15px; height: 80px; }
+                .reserve-info { font-size: 0.8rem; }
+                .rate-card { font-size: 0.8rem; }
+                .action-zone { border-left: none; padding-top: 40px; }
             }
         </style>
     </head>
     <body>
-        <div class="top-bar">
-            <div class="reserve-box">RESERVE: ${totalReserve} COIN</div>
-            <div class="time-box">
-                <span id="live-date">---</span>
-                <span id="live-clock">00:00:00</span>
-            </div>
-            <div class="rate-container">
-                <div class="rate-card">1 COIN = 100 USD</div>
-            </div>
+        <div class="header">
+            <div class="reserve-info">RESERVE: ${totalReserve} COIN</div>
+            <div class="rate-card">1 COIN = 100 USD</div>
         </div>
 
-        <div class="container">
-            <div class="left-zone">
+        <div class="main-frame">
+            <div class="visual-zone">
                 <canvas id="canvas"></canvas>
-                <div class="leaderboard">
-                    STATUS: ACTIVE<br>
-                    ENCRYPTION: QUANTUM_AES_256<br>
-                    LOCATION: MALAYSIA_MP_OFFICE
-                </div>
             </div>
-            <div class="right-zone">
-                <div class="panel">${content}</div>
+            <div class="action-zone">
+                <div class="terminal-card">${content}</div>
             </div>
         </div>
 
         <script>
-            function updateClock() {
-                const now = new Date();
-                document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', {year:'numeric', month:'short', day:'2-digit'}).toUpperCase();
-                document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', {hour12:false});
-            }
-            setInterval(updateClock, 1000); updateClock();
-
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
-            let w, h, particles = [];
+            let w, h, pts = [];
 
             function init() {
-                w = canvas.width = window.innerWidth;
-                h = canvas.height = window.innerHeight;
-                particles = [];
-                for(let i=0; i<300; i++) {
-                    let theta = Math.random() * 6.28;
-                    let phi = Math.acos((Math.random() * 2) - 1);
-                    particles.push({x: Math.sin(phi) * Math.cos(theta), y: Math.sin(phi) * Math.sin(theta), z: Math.cos(phi)});
-                }
+                w = canvas.width = canvas.offsetWidth;
+                h = canvas.height = canvas.offsetHeight;
+                pts = [];
+                for(let i=0; i<200; i++) pts.push({
+                    x: Math.random() * 2 - 1,
+                    y: Math.random() * 2 - 1,
+                    z: Math.random() * 2 - 1
+                });
             }
 
-            let angleY = 0;
+            let rot = 0;
             function draw() {
                 ctx.clearRect(0,0,w,h);
-                angleY += 0.002;
-                const radius = Math.min(w, h) * 0.35;
-                particles.forEach(p => {
-                    let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
-                    let x1 = p.x * cosY - p.z * sinY;
-                    let z1 = p.z * cosY + p.x * sinY;
-                    let opacity = (z1 + 1) / 2;
-                    ctx.fillStyle = "rgba(240, 185, 11, " + opacity + ")";
+                rot += 0.01;
+                const r = Math.min(w, h) * 0.4;
+                pts.forEach(p => {
+                    let x = p.x * Math.cos(rot) - p.z * Math.sin(rot);
+                    let z = p.z * Math.cos(rot) + p.x * Math.sin(rot);
+                    let s = (z + 1) / 2;
+                    ctx.fillStyle = \`rgba(240,185,11,\${s})\`;
                     ctx.beginPath();
-                    ctx.arc(x1 * radius + (window.innerWidth > 768 ? w*0.3 : w/2), p.y * radius + h/2, opacity * 2, 0, 7);
+                    ctx.arc(x * r + w/2, p.y * r + h/2, s * 3, 0, 7);
                     ctx.fill();
                 });
                 requestAnimationFrame(draw);
             }
-            window.addEventListener('resize', init); init(); draw();
+            window.onresize = init; init(); draw();
         </script>
     </body>
     </html>`;
 }
 
-// 3. 路由
+// 3. 路由逻辑
 app.get('/', async (req, res) => {
     try {
         const stats = await client.query("SELECT SUM(balance) as total FROM users");
         const reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
         res.send(layout(`
-            <div class="card">
-                <h2>Access Terminal</h2>
-                <input id="name" placeholder="IDENTIFICATION ID">
-                <input id="pin" type="password" placeholder="SECURITY PIN">
-                <button onclick="login()">INITIALIZE LOGIN</button>
-                <div style="margin:20px 0; height:1px; background:rgba(255,255,255,0.1);"></div>
-                <input id="rname" placeholder="NEW UNIQUE ID">
-                <input id="rpin" type="password" placeholder="SET 6-DIGIT PIN">
-                <button style="background:transparent; border:1px solid var(--gold); color:var(--gold);" onclick="register()">CREATE ACCOUNT</button>
-            </div>
+            <h2>Access Terminal</h2>
+            <input id="n" placeholder="ID">
+            <input id="p" type="password" placeholder="PIN">
+            <button onclick="login()">INITIALIZE LOGIN</button>
+            <div style="margin:40px 0 20px; border-top:1px solid #333; padding-top:20px; color:#666; font-size:0.7rem;">REGISTER SYSTEM</div>
+            <input id="rn" placeholder="NEW ID">
+            <input id="rp" type="password" placeholder="6-DIGIT PIN">
+            <button style="background:none; border:1px solid var(--gold); color:var(--gold);" onclick="reg()">CREATE ACCOUNT</button>
             <script>
                 async function login(){
-                    const name = document.getElementById('name').value;
-                    const pin = document.getElementById('pin').value;
-                    if(!name || !pin) return alert("Missing Info");
-                    const res = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
-                    const data = await res.json();
-                    if(data.ok) location.href='/wallet?u='+data.user; else alert(data.error);
+                    const r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('n').value,pin:document.getElementById('p').value})});
+                    const d = await r.json(); if(d.ok) location.href='/wallet?u='+d.u; else alert(d.err);
                 }
-                async function register(){
-                    const name = document.getElementById('rname').value;
-                    const pin = document.getElementById('rpin').value;
-                    const res = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
-                    const data = await res.json(); alert(data.msg || data.error);
+                async function reg(){
+                    const r = await fetch('/api/reg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('rn').value,pin:document.getElementById('rp').value})});
+                    const d = await r.json(); alert(d.msg || d.err);
                 }
             </script>
         `, reserve));
-    } catch (e) { res.send("Terminal Offline - Check DB connection"); }
+    } catch (e) { res.send("DB Connection Initializing... Please refresh in 5s"); }
 });
 
 app.get('/wallet', async (req, res) => {
     const u = req.query.u;
-    if(!u) return res.redirect('/');
     try {
         const r = await client.query("SELECT * FROM users WHERE name=$1",[u]);
-        if(!r.rows[0]) return res.redirect('/');
         const stats = await client.query("SELECT SUM(balance) as total FROM users");
-        const reserve = Number(stats.rows[0].total || 0).toLocaleString();
-        
+        const reserve = Number(stats.rows[0].total).toLocaleString();
         res.send(layout(`
-            <div class="card">
-                <div style="font-size:10px; color:rgba(255,255,255,0.4);">AUTHENTICATED ID</div>
-                <h2 style="margin-bottom:5px;">${u}</h2>
-                <div style="font-size:32px; color:#fff; font-weight:900; margin:20px 0;">
-                    <span style="font-size:12px; color:var(--gold);">AVAILABLE BALANCE:</span><br>
-                    ${Number(r.rows[0].balance).toLocaleString()} <span style="font-size:14px;">COIN</span>
-                </div>
-                <div style="margin:25px 0; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
-                    <input id="to" placeholder="RECIPIENT ID">
-                    <input id="amt" type="number" placeholder="TRANSFER AMOUNT">
-                    <input id="auth_pin" type="password" placeholder="SECURITY PIN">
-                    <button onclick="send()">EXECUTE TRANSFER</button>
-                    <button onclick="location.href='/'" style="background:#222; color:#fff; margin-top:10px; font-size:12px;">DISCONNECT</button>
-                </div>
+            <div style="font-size:0.8rem; color:#666;">WELCOME BACK</div>
+            <h2 style="margin:5px 0 30px 0;">\${u}</h2>
+            <div style="background:rgba(255,255,255,0.05); padding:20px; border-radius:10px; margin-bottom:30px;">
+                <div style="font-size:0.7rem; color:var(--gold);">ASSET BALANCE</div>
+                <div style="font-size:2rem; font-weight:900;">\${Number(r.rows[0].balance).toLocaleString()} <span style="font-size:1rem;">COIN</span></div>
             </div>
+            <input id="to" placeholder="RECIPIENT ID">
+            <input id="amt" type="number" placeholder="AMOUNT">
+            <input id="pin" type="password" placeholder="CONFIRM PIN">
+            <button onclick="send()">EXECUTE TRANSFER</button>
+            <button onclick="location.href='/'" style="background:none; color:#666; font-size:0.7rem;">TERMINATE SESSION</button>
             <script>
                 async function send(){
-                    const to = document.getElementById('to').value;
-                    const amt = document.getElementById('amt').value;
-                    const pin = document.getElementById('auth_pin').value;
-                    const res = await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:'${u}',to,amount:amt,pin})});
-                    const data = await res.json(); alert(data.msg || data.error); location.reload();
+                    const r = await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:'\${u}',to:document.getElementById('to').value,amt:document.getElementById('amt').value,pin:document.getElementById('pin').value})});
+                    const d = await r.json(); alert(d.msg || d.err); location.reload();
                 }
             </script>
         `, reserve));
     } catch (e) { res.redirect('/'); }
 });
 
-// 4. API (精准错误处理)
-app.post('/api/register', async (req,res)=>{
-    const {name,pin} = req.body;
+// 4. API 接口
+app.post('/api/reg', async(req,res)=>{
     try {
-        const hash = await bcrypt.hash(pin,10);
-        await client.query("INSERT INTO users VALUES ($1,0,$2)",[name,hash]);
-        res.json({msg:"Account Encrypted and Saved"});
-    } catch(e) { res.json({error:"ID already exists"}); }
+        const h = await bcrypt.hash(req.body.pin,10);
+        await client.query("INSERT INTO users VALUES ($1,0,$2)",[req.body.name,h]);
+        res.json({msg:"Identity Securely Created"});
+    } catch(e) { res.json({err:"ID already exists"}); }
 });
 
-app.post('/api/login', async (req,res)=>{
-    const {name,pin} = req.body;
-    try {
-        const r = await client.query("SELECT * FROM users WHERE name=$1",[name]);
-        if(r.rows.length===0) return res.json({error:"Access Denied: ID not found"});
-        const ok = await bcrypt.compare(pin,r.rows[0].pin_hash);
-        if(!ok) return res.json({error:"Access Denied: Invalid PIN"});
-        res.json({ok:true, user:name});
-    } catch(e) { res.json({error:"Database Error"}); }
+app.post('/api/login', async(req,res)=>{
+    const r = await client.query("SELECT * FROM users WHERE name=$1",[req.body.name]);
+    if(r.rows[0] && await bcrypt.compare(req.body.pin, r.rows[0].pin_hash)) res.json({ok:true, u:req.body.name});
+    else res.json({err:"Access Denied"});
 });
 
-app.post('/api/transfer', async (req,res)=>{
-    const {from, to, amount, pin} = req.body;
+app.post('/api/send', async(req,res)=>{
+    const {from,to,amt,pin} = req.body;
     try {
         await client.query('BEGIN');
         const s = await client.query("SELECT * FROM users WHERE name=$1 FOR UPDATE",[from]);
-        const r = await client.query("SELECT * FROM users WHERE name=$1 FOR UPDATE",[to]);
-        if(!s.rows[0] || !r.rows[0]) throw new Error("Recipient ID not found");
         if(!await bcrypt.compare(pin, s.rows[0].pin_hash)) throw new Error("Invalid PIN");
-        if(Number(s.rows[0].balance) < Number(amount)) throw new Error("Insufficient Funds");
-
-        await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2",[amount, from]);
-        await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2",[amount, to]);
+        if(Number(s.rows[0].balance) < Number(amt)) throw new Error("Insufficient Balance");
+        await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2",[amt,from]);
+        await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2",[amt,to]);
         await client.query('COMMIT');
-        res.json({msg:"Quantum Transfer Successful"});
-    } catch (err) {
-        await client.query('ROLLBACK');
-        res.json({error: err.message});
-    }
+        res.json({msg:"Transfer Complete"});
+    } catch(e) { await client.query('ROLLBACK'); res.json({err:e.message}); }
 });
 
-// 5. 启动
-app.listen(port, async ()=>{
-    await initDB();
-    console.log("Terminal Online: " + port);
+app.listen(port, () => {
+    connectDB();
+    console.log("Server running on " + port);
 });
