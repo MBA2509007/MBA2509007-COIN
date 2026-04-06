@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MBA ONLINE EXCHANGE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --gold: #f0b90b;
+            --dark: #050505;
+            --green-glow: #00ff7f;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--dark);
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden; /* 防止手机端出现滚动条 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 背景 3D 地球容器 */
+        #globe-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 右侧绿色汇率卡片 (C - Coin Valuation) */
+        .rate-card {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 255, 127, 0.1);
+            border: 1px solid var(--green-glow);
+            padding: 15px 25px;
+            border-radius: 4px;
+            backdrop-filter: blur(8px);
+            z-index: 100;
+            box-shadow: 0 0 15px rgba(0, 255, 127, 0.2);
+        }
+
+        .rate-card h2 {
+            margin: 0;
+            font-size: 0.8rem;
+            color: var(--green-glow);
+            letter-spacing: 2px;
+        }
+
+        .rate-card p {
+            margin: 5px 0 0 0;
+            font-size: 1.4rem;
+            font-weight: bold;
+            white-space: nowrap; /* 强制不换行，防止重叠 */
+        }
+
+        /* 中央登录面板 (F - Flexible UI) */
+        .terminal-box {
+            position: relative;
+            z-index: 10;
+            width: 90%;
+            max-width: 380px;
+            background: var(--glass);
+            padding: 40px;
+            border: 1px solid rgba(240, 185, 11, 0.3);
+            border-top: 4px solid var(--gold);
+            backdrop-filter: blur(15px);
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .terminal-box h1 {
+            font-size: 1.5rem;
+            margin-bottom: 30px;
+            color: var(--gold);
+            text-align: center;
+            letter-spacing: 4px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid rgba(240, 185, 11, 0.5);
+            padding: 15px;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--gold);
+            box-shadow: 0 0 10px rgba(240, 185, 11, 0.3);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 15px;
+            background: var(--gold);
+            color: black;
+            border: none;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+
+        .btn-login:hover {
+            background: #ffcf33;
+            transform: translateY(-2px);
+        }
+
+        .footer-links {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 0.7rem;
+            color: #888;
+        }
+
+        .footer-links span {
+            color: var(--gold);
+            cursor: pointer;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="globe-canvas"></canvas>
+
+    <div class="rate-card">
+        <h2>LIVE VALUATION</h2>
+        <p>1 COIN = 100 USD</p>
+    </div>
+
+    <div class="terminal-box">
+        <h1>MBA_TERMINAL</h1>
+        <div class="input-group">
+            <input type="text" placeholder="CLIENT USERNAME" id="username">
+        </div>
+        <div class="input-group">
+            <input type="password" placeholder="6-DIGIT PIN" maxlength="6" id="pin">
+        </div>
+        <button class="btn-login">LOGIN</button>
+        
+        <div class="footer-links">
+            NEW NODE? <span id="reg-btn">REGISTER</span> ACCOUNT
+        </div>
+    </div>
+
+    <script>
+        // 这里预留你的 3D 地球渲染代码
+        console.log("PENANG_TERMINAL_READY");
+        
+        // 简单的交互反馈
+        document.getElementById('reg-btn').onclick = () => {
+            alert("SYSTEM MESSAGE: REGISTRATION PROTOCOL INITIATED.");
+        };
+    </script>
+</body>
+</html>
