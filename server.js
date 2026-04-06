@@ -19,13 +19,21 @@ async function initDB() {
             connectionTimeoutMillis: 10000, 
         });
         await client.connect();
+        
+        // 1. 确保表存在
         await client.query(`CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance NUMERIC DEFAULT 0, pin_hash TEXT)`);
-        const admin = await client.query("SELECT * FROM users WHERE name='Admin'");
-        if (admin.rows.length === 0) {
-            const hash = await bcrypt.hash("888888", 10);
-            await client.query("INSERT INTO users VALUES ('Admin', 1000000, $1)", [hash]);
-        }
+        
+        // 2. 强制同步 Admin 账号（解决你登录不到的问题）
+        const hash = await bcrypt.hash("888888", 10);
+        await client.query(`
+            INSERT INTO users (name, balance, pin_hash) 
+            VALUES ('Admin', 1000000, $1) 
+            ON CONFLICT (name) DO UPDATE 
+            SET pin_hash = $1, balance = 1000000`, [hash]);
+            
+        console.log("Admin 账号已就绪：ID 为 Admin, PIN 为 888888");
     } catch (err) {
+        console.error("数据库初始化失败:", err);
         process.exit(1); 
     }
 }
