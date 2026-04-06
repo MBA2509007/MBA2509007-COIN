@@ -10,7 +10,7 @@ app.use(express.json());
 
 let client;
 
-// 1. 数据库初始化 (使用最稳健的逻辑，防止崩溃)
+// 1. 数据库初始化：强制确保 Admin 存在且信息正确
 async function initDB() {
     client = new Client({
         connectionString: process.env.DATABASE_URL,
@@ -20,31 +20,27 @@ async function initDB() {
 
     try {
         await client.connect();
-        console.log("Connected to database.");
+        console.log("Database Connected.");
         
         // 创建表
         await client.query(`CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance NUMERIC DEFAULT 0, pin_hash TEXT)`);
         
-        // 检查 Admin 是否存在
-        const res = await client.query("SELECT * FROM users WHERE name = 'Admin'");
+        // 【核心修复】：不再只是 INSERT，而是 ON CONFLICT DO UPDATE
+        // 这样可以解决你之前因为旧数据导致登录不到的问题
         const hash = await bcrypt.hash("888888", 10);
-        
-        if (res.rows.length === 0) {
-            // 不存在则创建
-            await client.query("INSERT INTO users (name, balance, pin_hash) VALUES ('Admin', 1000000, $1)", [hash]);
-            console.log("Admin account created.");
-        } else {
-            // 存在则强制更新 PIN 和余额，确保你能登录
-            await client.query("UPDATE users SET pin_hash = $1, balance = 1000000 WHERE name = 'Admin'", [hash]);
-            console.log("Admin account updated.");
-        }
+        await client.query(`
+            INSERT INTO users (name, balance, pin_hash) 
+            VALUES ('Admin', 1000000, $1) 
+            ON CONFLICT (name) DO UPDATE 
+            SET pin_hash = $1, balance = 1000000`, [hash]);
+            
+        console.log("Admin account synchronized successfully.");
     } catch (err) {
-        console.error("Database connection failed:", err.message);
-        // 这里不使用 process.exit(1)，防止 Vercel 频繁崩溃
+        console.error("Init Error:", err.message);
     }
 }
 
-// 2. 视觉布局 (正圆球体 + 距离感光纤)
+// 2. 增强布局：找回时间、日期及光纤效果
 function layout(content, totalReserve = "1,000,000") {
     return `
     <!DOCTYPE html>
@@ -56,62 +52,99 @@ function layout(content, totalReserve = "1,000,000") {
         <style>
             :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; }
             body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
-            .top-bar { position: fixed; top: 0; width: 100%; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; z-index: 2000; box-sizing: border-box; background: linear-gradient(to bottom, rgba(5,5,5,0.9), transparent); }
+            
+            .top-bar { 
+                position: fixed; top: 0; width: 100%; padding: 20px 40px; 
+                display: flex; justify-content: space-between; align-items: center;
+                z-index: 2000; box-sizing: border-box;
+                background: linear-gradient(to bottom, rgba(5,5,5,0.9), transparent);
+            }
             .reserve-box { color: var(--gold); font-size: 18px; font-weight: 900; }
-            .rate-card { background: rgba(0, 255, 136, 0.1); border: 1px solid var(--neon-green); padding: 6px 12px; border-radius: 4px; color: var(--neon-green); font-family: 'Roboto Mono', monospace; font-size: 16px; font-weight: 700; box-shadow: 0 0 10px rgba(0,255,136,0.2); }
+            .time-box { text-align: center; color: rgba(255,255,255,0.5); font-size: 12px; }
+            #live-clock { display: block; color: #fff; font-size: 16px; font-weight: 900; }
+            .rate-card { background: rgba(0, 255, 136, 0.1); border: 1px solid var(--neon-green); padding: 6px 12px; border-radius: 4px; color: var(--neon-green); font-family: 'Roboto Mono', monospace; font-size: 16px; }
+
             .container { display: flex; height: 100vh; width: 100vw; }
             .left-zone { flex: 1.2; position: relative; }
             #canvas { width: 100%; height: 100%; }
+            
             .right-zone { flex: 0.8; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.8); backdrop-filter: blur(20px); border-left: 1px solid rgba(255,255,255,0.05); }
             .panel { width: 85%; max-width: 380px; }
             .card { background: rgba(255,255,255,0.02); padding: 30px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); }
+            
             h2 { color: var(--gold); font-size: 1.2rem; letter-spacing: 3px; text-align: center; margin-bottom: 25px; }
             input { width: 100%; padding: 14px; margin: 6px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 6px; font-family: 'Orbitron'; font-size: 12px; box-sizing: border-box; }
             button { width: 100%; padding: 15px; margin-top: 10px; background: var(--gold); color: #000; border: none; border-radius: 6px; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; text-transform: uppercase; }
-            .leaderboard { position: absolute; bottom: 30px; left: 40px; font-size: 10px; color: rgba(255,255,255,0.2); font-family: 'Roboto Mono'; }
+            
+            .leaderboard { position: absolute; bottom: 30px; left: 40px; font-size: 10px; color: rgba(255,255,255,0.2); font-family: 'Roboto Mono'; line-height: 1.5; }
         </style>
     </head>
     <body>
         <div class="top-bar">
             <div class="reserve-box">RESERVE: ${totalReserve} COIN</div>
+            <div class="time-box">
+                <span id="live-date">APR 06, 2026</span>
+                <span id="live-clock">00:00:00</span>
+            </div>
             <div class="rate-card">1 COIN = 100 USD</div>
         </div>
         <div class="container">
-            <div class="left-zone"><canvas id="canvas"></canvas><div class="leaderboard">SYSTEM: ACTIVE<br>PENANG_TERMINAL</div></div>
-            <div class="right-zone"><div class="panel">${content}</div></div>
+            <div class="left-zone">
+                <canvas id="canvas"></canvas>
+                <div class="leaderboard">SYSTEM_STATUS: ACTIVE<br>LOCATION: MALAYSIA_MP_OFFICE</div>
+            </div>
+            <div class="right-zone">
+                <div class="panel">${content}</div>
+            </div>
         </div>
         <script>
+            // 时钟脚本
+            function updateClock() {
+                const now = new Date();
+                const options = { year: 'numeric', month: 'short', day: '2-digit' };
+                document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', options).toUpperCase();
+                document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+            }
+            setInterval(updateClock, 1000); updateClock();
+
+            // 光纤球脚本
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             let w, h, particles = [];
+            
             function init() {
                 w = canvas.width = canvas.offsetWidth; h = canvas.height = canvas.offsetHeight;
                 particles = [];
-                for(let i=0; i<300; i++) {
+                for(let i=0; i<280; i++) {
                     let t = Math.random()*6.28, a = Math.acos(Math.random()*2-1);
                     particles.push({x: Math.sin(a)*Math.cos(t), y: Math.sin(a)*Math.sin(t), z: Math.cos(a)});
                 }
             }
+
             let rot = 0;
             function draw() {
                 ctx.fillStyle = '#050505'; ctx.fillRect(0,0,w,h);
                 rot += 0.002;
                 const r = Math.min(w, h) * 0.35;
+                
                 let projected = particles.map(p => {
                     let x1 = p.x * Math.cos(rot) - p.z * Math.sin(rot);
                     let z1 = p.z * Math.cos(rot) + p.x * Math.sin(rot);
                     return { x: x1 * r + w/2, y: p.y * r + h/2, z: z1 };
                 });
+
                 ctx.lineWidth = 0.5;
                 for(let i=0; i<projected.length; i++) {
                     for(let j=i+1; j<projected.length; j++) {
-                        let dist = Math.hypot(projected[i].x-projected[j].x, projected[i].y-projected[j].y);
+                        let dist = Math.hypot(projected[i].x - projected[j].x, projected[i].y - projected[j].y);
                         if(dist < r * 0.25) {
-                            ctx.strokeStyle = "rgba(240,185,11," + (0.2 * (1-dist/(r*0.25))) + ")";
+                            let alpha = (1 - dist/(r*0.25)) * ((projected[i].z + projected[j].z + 2)/4);
+                            ctx.strokeStyle = "rgba(240, 185, 11, " + (alpha * 0.3) + ")";
                             ctx.beginPath(); ctx.moveTo(projected[i].x, projected[i].y); ctx.lineTo(projected[j].x, projected[j].y); ctx.stroke();
                         }
                     }
                 }
+
                 projected.forEach(p => {
                     let s = (p.z + 1) / 2;
                     ctx.fillStyle = "rgba(240, 185, 11, " + (s * 0.8) + ")";
@@ -196,7 +229,7 @@ app.post('/api/login', async (req,res)=>{
         if(r.rows.length && await bcrypt.compare(req.body.pin, r.rows[0].pin_hash)) {
             res.json({ok:true, user:req.body.name});
         } else res.json({error:"DENIED"});
-    } catch(e) { res.json({error:"SERVER ERROR"}); }
+    } catch(e) { res.json({error:"ERROR"}); }
 });
 
 app.post('/api/transfer', async (req,res)=>{
@@ -208,9 +241,9 @@ app.post('/api/transfer', async (req,res)=>{
             await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2",[amount, from]);
             await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2",[amount, to]);
             await client.query('COMMIT');
-            res.json({msg:"TRANSFER SUCCESSFUL"});
+            res.json({msg:"SUCCESS"});
         } else throw new Error();
-    } catch(e) { await client.query('ROLLBACK'); res.json({error:"AUTHORIZATION FAILED"}); }
+    } catch(e) { await client.query('ROLLBACK'); res.json({error:"FAILED"}); }
 });
 
 app.listen(port, () => initDB());
