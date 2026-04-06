@@ -10,207 +10,363 @@ app.use(express.json());
 
 let client;
 
-// 1. 数据库初始化 (使用最稳健的逻辑，防止崩溃)
+// 1. 数据库初始化 (Database Initialization)
 async function initDB() {
-    client = new Client({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false },
-        connectionTimeoutMillis: 10000, 
-    });
-
     try {
+        client = new Client({
+            connectionString: process.env.DATABASE_URL,
+            ssl: { rejectUnauthorized: false },
+            connectionTimeoutMillis: 10000, 
+        });
+
         await client.connect();
-        console.log("Connected to database.");
-        
-        // 创建表
-        await client.query(`CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, balance NUMERIC DEFAULT 0, pin_hash TEXT)`);
-        
-        // 检查 Admin 是否存在
-        const res = await client.query("SELECT * FROM users WHERE name = 'Admin'");
-        const hash = await bcrypt.hash("888888", 10);
-        
-        if (res.rows.length === 0) {
-            // 不存在则创建
-            await client.query("INSERT INTO users (name, balance, pin_hash) VALUES ('Admin', 1000000, $1)", [hash]);
-            console.log("Admin account created.");
-        } else {
-            // 存在则强制更新 PIN 和余额，确保你能登录
-            await client.query("UPDATE users SET pin_hash = $1, balance = 1000000 WHERE name = 'Admin'", [hash]);
-            console.log("Admin account updated.");
+        console.log("DB_CONNECTED_SUCCESSFULLY");
+
+        await client.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                name TEXT PRIMARY KEY,
+                balance NUMERIC DEFAULT 0,
+                pin_hash TEXT
+            )
+        `);
+
+        // 默认 Admin 初始化 (Default Admin Setup)
+        const admin = await client.query("SELECT * FROM users WHERE name='Admin'");
+        if (admin.rows.length === 0) {
+            const hash = await bcrypt.hash("888888", 10);
+            await client.query(
+                "INSERT INTO users VALUES ('Admin', 1000000, $1)",
+                [hash]
+            );
         }
     } catch (err) {
-        console.error("Database connection failed:", err.message);
-        // 这里不使用 process.exit(1)，防止 Vercel 频繁崩溃
+        console.error("DB_INIT_ERROR:", err.message);
+        process.exit(1); 
     }
 }
 
-// 2. 视觉布局 (正圆球体 + 距离感光纤)
+// 2. 核心视觉布局 (3D Globe + Live Clock + Green Card Rate)
 function layout(content, totalReserve = "1,000,000") {
     return `
     <!DOCTYPE html>
     <html>
     <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Quantum Terminal</title>
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&family=Roboto+Mono:wght@700&display=swap" rel="stylesheet">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>Quantum Financial Terminal</title>
+        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
         <style>
             :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; }
             body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
-            .top-bar { position: fixed; top: 0; width: 100%; padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; z-index: 2000; box-sizing: border-box; background: linear-gradient(to bottom, rgba(5,5,5,0.9), transparent); }
-            .reserve-box { color: var(--gold); font-size: 18px; font-weight: 900; }
-            .rate-card { background: rgba(0, 255, 136, 0.1); border: 1px solid var(--neon-green); padding: 6px 12px; border-radius: 4px; color: var(--neon-green); font-family: 'Roboto Mono', monospace; font-size: 16px; font-weight: 700; box-shadow: 0 0 10px rgba(0,255,136,0.2); }
+            
+            /* 顶部状态栏 */
+            .top-bar { 
+                position: fixed; top: 0; width: 100%; padding: 20px 40px; 
+                display: flex; justify-content: space-between; align-items: center;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+                z-index: 100; box-sizing: border-box;
+            }
+            .reserve-box { color: var(--gold); font-size: 20px; font-weight: 900; letter-spacing: 2px; flex: 1; }
+            
+            /* 中央实时时钟 */
+            .time-box { flex: 1; text-align: center; color: rgba(255,255,255,0.6); font-size: 14px; letter-spacing: 1px; }
+            #live-clock { display: block; color: #fff; font-size: 18px; font-weight: 900; }
+
+            /* 右侧：绿色卡片设计 */
+            .rate-container { flex: 1; display: flex; justify-content: flex-end; }
+            .rate-card { 
+                background: rgba(0, 255, 136, 0.1); 
+                border: 1px solid var(--neon-green);
+                padding: 10px 25px;
+                border-radius: 12px;
+                color: var(--neon-green);
+                font-size: 24px;
+                font-weight: 900;
+                text-shadow: 0 0 10px rgba(0,255,136,0.5);
+                box-shadow: inset 0 0 15px rgba(0,255,136,0.1), 0 0 20px rgba(0,255,136,0.2);
+                animation: pulse 2s infinite;
+            }
+
+            @keyframes pulse {
+                0% { opacity: 0.8; transform: scale(1); }
+                50% { opacity: 1; transform: scale(1.02); }
+                100% { opacity: 0.8; transform: scale(1); }
+            }
+
+            /* 主容器布局 */
             .container { display: flex; height: 100vh; width: 100vw; }
-            .left-zone { flex: 1.2; position: relative; }
-            #canvas { width: 100%; height: 100%; }
-            .right-zone { flex: 0.8; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.8); backdrop-filter: blur(20px); border-left: 1px solid rgba(255,255,255,0.05); }
-            .panel { width: 85%; max-width: 380px; }
-            .card { background: rgba(255,255,255,0.02); padding: 30px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); }
-            h2 { color: var(--gold); font-size: 1.2rem; letter-spacing: 3px; text-align: center; margin-bottom: 25px; }
-            input { width: 100%; padding: 14px; margin: 6px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 6px; font-family: 'Orbitron'; font-size: 12px; box-sizing: border-box; }
-            button { width: 100%; padding: 15px; margin-top: 10px; background: var(--gold); color: #000; border: none; border-radius: 6px; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; text-transform: uppercase; }
-            .leaderboard { position: absolute; bottom: 30px; left: 40px; font-size: 10px; color: rgba(255,255,255,0.2); font-family: 'Roboto Mono'; }
+            .left-zone { flex: 1.2; position: relative; display: flex; align-items: center; justify-content: center; }
+            #canvas { width: 100%; height: 100%; cursor: move; }
+
+            .right-zone { flex: 0.8; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.5); backdrop-filter: blur(10px); border-left: 1px solid rgba(255,255,255,0.05); }
+            .panel { width: 85%; max-width: 400px; }
+            
+            .card { background: rgba(255,255,255,0.03); padding: 30px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+            h2 { color: var(--gold); margin-top: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 3px; }
+            
+            input { width: 100%; padding: 16px; margin: 10px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 8px; font-family: 'Orbitron'; font-size: 14px; box-sizing: border-box; }
+            button { width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); color: #000; border: none; border-radius: 8px; font-family: 'Orbitron'; font-weight: 900; font-size: 16px; cursor: pointer; transition: 0.3s; }
+            button:hover { background: #fff; transform: translateY(-2px); }
+            
+            .leaderboard { position: absolute; bottom: 40px; left: 40px; font-size: 12px; color: rgba(255,255,255,0.4); line-height: 2; }
+
+            @media (max-width: 768px) {
+                .container { flex-direction: column; overflow-y: auto; }
+                .left-zone { height: 50vh; width: 100%; }
+                .right-zone { width: 100%; padding: 40px 0; }
+                .top-bar { padding: 10px 20px; flex-wrap: wrap; }
+                .rate-card { font-size: 16px; padding: 5px 15px; }
+                .reserve-box { font-size: 14px; }
+            }
         </style>
     </head>
     <body>
         <div class="top-bar">
             <div class="reserve-box">RESERVE: ${totalReserve} COIN</div>
-            <div class="rate-card">1 COIN = 100 USD</div>
+            
+            <div class="time-box">
+                <span id="live-date">---</span>
+                <span id="live-clock">00:00:00</span>
+            </div>
+
+            <div class="rate-container">
+                <div class="rate-card">1 COIN = 100 USD</div>
+            </div>
         </div>
+
         <div class="container">
-            <div class="left-zone"><canvas id="canvas"></canvas><div class="leaderboard">SYSTEM: ACTIVE<br>PENANG_TERMINAL</div></div>
-            <div class="right-zone"><div class="panel">${content}</div></div>
+            <div class="left-zone">
+                <canvas id="canvas"></canvas>
+                <div class="leaderboard">
+                    SYSTEM_STATUS: ACTIVE<br>
+                    ENCRYPTION: QUANTUM_AES_256<br>
+                    LOCATION: PENANG_TERMINAL
+                </div>
+            </div>
+            <div class="right-zone">
+                <div class="panel">${content}</div>
+            </div>
         </div>
+
         <script>
+            // 1. 实时时钟脚本
+            function updateClock() {
+                const now = new Date();
+                const options = { year: 'numeric', month: 'short', day: '2-digit' };
+                document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', options).toUpperCase();
+                document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+            }
+            setInterval(updateClock, 1000);
+            updateClock();
+
+            // 2. 3D 地球仪 Canvas 引擎
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             let w, h, particles = [];
+
             function init() {
-                w = canvas.width = canvas.offsetWidth; h = canvas.height = canvas.offsetHeight;
+                w = canvas.width = window.innerWidth > 768 ? window.innerWidth * 0.6 : window.innerWidth;
+                h = canvas.height = window.innerHeight;
                 particles = [];
-                for(let i=0; i<300; i++) {
-                    let t = Math.random()*6.28, a = Math.acos(Math.random()*2-1);
-                    particles.push({x: Math.sin(a)*Math.cos(t), y: Math.sin(a)*Math.sin(t), z: Math.cos(a)});
+                for(let i=0; i<400; i++) {
+                    let theta = Math.random() * Math.PI * 2;
+                    let phi = Math.acos((Math.random() * 2) - 1);
+                    particles.push({
+                        x: Math.sin(phi) * Math.cos(theta),
+                        y: Math.sin(phi) * Math.sin(theta),
+                        z: Math.cos(phi)
+                    });
                 }
             }
-            let rot = 0;
+
+            let angleY = 0;
             function draw() {
-                ctx.fillStyle = '#050505'; ctx.fillRect(0,0,w,h);
-                rot += 0.002;
-                const r = Math.min(w, h) * 0.35;
-                let projected = particles.map(p => {
-                    let x1 = p.x * Math.cos(rot) - p.z * Math.sin(rot);
-                    let z1 = p.z * Math.cos(rot) + p.x * Math.sin(rot);
-                    return { x: x1 * r + w/2, y: p.y * r + h/2, z: z1 };
-                });
-                ctx.lineWidth = 0.5;
-                for(let i=0; i<projected.length; i++) {
-                    for(let j=i+1; j<projected.length; j++) {
-                        let dist = Math.hypot(projected[i].x-projected[j].x, projected[i].y-projected[j].y);
-                        if(dist < r * 0.25) {
-                            ctx.strokeStyle = "rgba(240,185,11," + (0.2 * (1-dist/(r*0.25))) + ")";
-                            ctx.beginPath(); ctx.moveTo(projected[i].x, projected[i].y); ctx.lineTo(projected[j].x, projected[j].y); ctx.stroke();
-                        }
+                ctx.clearRect(0,0,w,h);
+                angleY += 0.002;
+                const radius = Math.min(w, h) * 0.35;
+                
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(240, 185, 11, 0.05)';
+                for(let i=0; i<particles.length; i+=10) {
+                    for(let j=0; j<particles.length; j+=40) {
+                        let p1 = project(particles[i], radius);
+                        let p2 = project(particles[j], radius);
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
                     }
                 }
-                projected.forEach(p => {
-                    let s = (p.z + 1) / 2;
-                    ctx.fillStyle = "rgba(240, 185, 11, " + (s * 0.8) + ")";
-                    ctx.beginPath(); ctx.arc(p.x, p.y, s * 2, 0, 7); ctx.fill();
+                ctx.stroke();
+
+                particles.forEach(p => {
+                    let proj = project(p, radius);
+                    let opacity = (p.transformedZ + 1) / 2;
+                    ctx.fillStyle = \`rgba(240, 185, 11, \${opacity})\`;
+                    ctx.beginPath();
+                    ctx.arc(proj.x, proj.y, opacity * 2, 0, Math.PI * 2);
+                    ctx.fill();
+                    if(opacity > 0.8) {
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = '#f0b90b';
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
                 });
                 requestAnimationFrame(draw);
             }
-            window.onresize = init; init(); draw();
+
+            function project(p, r) {
+                let x = p.x, y = p.y, z = p.z;
+                let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+                let x1 = x * cosY - z * sinY;
+                let z1 = z * cosY + x * sinY;
+                p.transformedZ = z1;
+                return { x: x1 * r + w/2, y: y * r + h/2 };
+            }
+
+            window.addEventListener('resize', init);
+            init(); draw();
         </script>
     </body>
     </html>`;
 }
 
-// 3. 路由
+// 3. 页面路由 (Page Routes)
 app.get('/', async (req, res) => {
-    let reserve = "1,000,000";
     try {
         const stats = await client.query("SELECT SUM(balance) as total FROM users");
-        reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
-    } catch(e) {}
-    res.send(layout(`
-        <div class="card">
-            <h2>ACCESS TERMINAL</h2>
-            <input id="name" placeholder="IDENTIFICATION ID">
-            <input id="pin" type="password" placeholder="SECURITY PIN">
-            <button onclick="login()">INITIALIZE LOGIN</button>
-            <div style="margin:20px 0; border-top:1px solid rgba(255,255,255,0.05);"></div>
-            <input id="rname" placeholder="NEW UNIQUE ID">
-            <input id="rpin" type="password" placeholder="SET 6-DIGIT PIN">
-            <button style="background:transparent; border:1px solid var(--gold); color:var(--gold);" onclick="register()">CREATE ACCOUNT</button>
-        </div>
-        <script>
-            async function login(){
-                const res = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('name').value,pin:document.getElementById('pin').value})});
-                const data = await res.json(); if(data.ok) location.href='/wallet?u='+data.user; else alert("ACCESS DENIED");
-            }
-            async function register(){
-                const res = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.getElementById('rname').value,pin:document.getElementById('rpin').value})});
-                const data = await res.json(); alert(data.msg || data.error);
-            }
-        </script>
-    `, reserve));
+        const reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
+        res.send(layout(`
+            <div class="card">
+                <h2>Access Terminal</h2>
+                <input id="name" placeholder="IDENTIFICATION ID">
+                <input id="pin" type="password" placeholder="SECURITY PIN">
+                <button onclick="login()">INITIALIZE LOGIN</button>
+                <div style="margin:20px 0; height:1px; background:rgba(255,255,255,0.1);"></div>
+                <input id="rname" placeholder="NEW UNIQUE ID">
+                <input id="rpin" type="password" placeholder="SET 6-DIGIT PIN">
+                <button style="background:transparent; border:1px solid var(--gold); color:var(--gold);" onclick="register()">CREATE ACCOUNT</button>
+            </div>
+            <script>
+                async function login(){
+                    const name = document.getElementById('name').value;
+                    const pin = document.getElementById('pin').value;
+                    if(!name || !pin) return alert("Required: ID & PIN");
+                    const res = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+                    const data = await res.json();
+                    if(data.ok) location.href='/wallet?u='+data.user; else alert(data.error);
+                }
+                async function register(){
+                    const name = document.getElementById('rname').value;
+                    const pin = document.getElementById('rpin').value;
+                    if(!name || !pin) return alert("Required: ID & PIN");
+                    const res = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+                    const data = await res.json(); alert(data.msg || data.error);
+                }
+            </script>
+        `, reserve));
+    } catch (e) { res.send("System Error"); }
 });
 
 app.get('/wallet', async (req, res) => {
     const u = req.query.u;
+    if(!u) return res.redirect('/');
     try {
         const r = await client.query("SELECT * FROM users WHERE name=$1",[u]);
         if(!r.rows[0]) return res.redirect('/');
+        const stats = await client.query("SELECT SUM(balance) as total FROM users");
+        const reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
+        
         res.send(layout(`
             <div class="card">
-                <div style="font-size:10px; color:rgba(255,255,255,0.4);">USER: ${u}</div>
-                <div style="font-size:32px; margin:15px 0; color:var(--gold); font-weight:900;">${Number(r.rows[0].balance).toLocaleString()} <span style="font-size:12px;">COIN</span></div>
-                <input id="to" placeholder="RECIPIENT ID">
-                <input id="amt" type="number" placeholder="AMOUNT">
-                <input id="auth_pin" type="password" placeholder="SECURITY PIN">
-                <button onclick="send()">AUTHORIZE TRANSFER</button>
-                <button onclick="location.href='/'" style="background:#111; color:#555; margin-top:10px; font-size:11px;">TERMINATE SESSION</button>
+                <div style="font-size:10px; color:rgba(255,255,255,0.4); letter-spacing:2px;">AUTHENTICATED USER</div>
+                <h2 style="margin-bottom:5px;">${u}</h2>
+                <div style="font-size:32px; color:#fff; font-weight:900; margin:20px 0;">
+                    <span style="font-size:14px; color:var(--gold);">BALANCE:</span><br>
+                    ${Number(r.rows[0].balance).toLocaleString()} <span style="font-size:14px;">COIN</span>
+                </div>
+                
+                <div style="margin:25px 0; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
+                    <h2 style="font-size:14px;">Transfer Fund</h2>
+                    <input id="to" placeholder="RECIPIENT ID">
+                    <input id="amt" type="number" placeholder="AMOUNT">
+                    <input id="auth_pin" type="password" placeholder="CONFIRM PIN">
+                    <button id="send-btn" onclick="send()">AUTHORIZE TRANSFER</button>
+                    <button onclick="location.href='/'" style="background:#222; color:#fff; margin-top:10px; font-size:12px;">LOGOUT TERMINAL</button>
+                </div>
             </div>
             <script>
                 async function send(){
-                    const res = await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:'${u}',to:document.getElementById('to').value,amount:document.getElementById('amt').value,pin:document.getElementById('auth_pin').value})});
-                    const data = await res.json(); alert(data.msg || data.error); location.reload();
+                    const to = document.getElementById('to').value;
+                    const amt = document.getElementById('amt').value;
+                    const pin = document.getElementById('auth_pin').value;
+                    if(!to || !amt || !pin) return alert("Complete all fields");
+                    const btn = document.getElementById('send-btn');
+                    btn.disabled = true; btn.innerText = "ENCRYPTING...";
+                    try {
+                        const res = await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from:'${u}',to,amount:amt,pin})});
+                        const data = await res.json();
+                        alert(data.msg || data.error);
+                        location.reload();
+                    } catch(e) { alert("Network Error"); btn.disabled = false; }
                 }
             </script>
-        `));
-    } catch(e) { res.redirect('/'); }
+        `, reserve));
+    } catch (e) { res.redirect('/'); }
 });
 
-// API 接口
+// 4. API 接口 (API Endpoints)
 app.post('/api/register', async (req,res)=>{
+    const {name,pin} = req.body;
     try {
-        const hash = await bcrypt.hash(req.body.pin, 10);
-        await client.query("INSERT INTO users VALUES ($1,0,$2)",[req.body.name, hash]);
-        res.json({msg:"ACCOUNT SECURED"});
-    } catch(e) { res.json({error:"ID UNAVAILABLE"}); }
+        const hash = await bcrypt.hash(pin,10);
+        await client.query("INSERT INTO users VALUES ($1,0,$2)",[name,hash]);
+        res.json({msg:"Account Created Successfully"});
+    } catch(e) { res.json({error:"Name already exists"}); }
 });
 
 app.post('/api/login', async (req,res)=>{
+    const {name,pin} = req.body;
     try {
-        const r = await client.query("SELECT * FROM users WHERE name=$1",[req.body.name]);
-        if(r.rows.length && await bcrypt.compare(req.body.pin, r.rows[0].pin_hash)) {
-            res.json({ok:true, user:req.body.name});
-        } else res.json({error:"DENIED"});
-    } catch(e) { res.json({error:"SERVER ERROR"}); }
+        const r = await client.query("SELECT * FROM users WHERE name=$1",[name]);
+        if(r.rows.length===0) return res.json({error:"User not found"});
+        const ok = await bcrypt.compare(pin,r.rows[0].pin_hash);
+        if(!ok) return res.json({error:"Invalid PIN"});
+        res.json({ok:true, user:name});
+    } catch(e) { res.json({error:"System Error"}); }
 });
 
 app.post('/api/transfer', async (req,res)=>{
     const {from, to, amount, pin} = req.body;
+    const amt = Number(amount);
+    if(isNaN(amt) || amt <= 0) return res.json({error:"Invalid Amount"});
+    if(from === to) return res.json({error:"Cannot send to self"});
+
     try {
         await client.query('BEGIN');
-        const s = await client.query("SELECT * FROM users WHERE name=$1 FOR UPDATE",[from]);
-        if(s.rows.length && await bcrypt.compare(pin, s.rows[0].pin_hash) && s.rows[0].balance >= amount) {
-            await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2",[amount, from]);
-            await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2",[amount, to]);
-            await client.query('COMMIT');
-            res.json({msg:"TRANSFER SUCCESSFUL"});
-        } else throw new Error();
-    } catch(e) { await client.query('ROLLBACK'); res.json({error:"AUTHORIZATION FAILED"}); }
+        const sortedUsers = [from, to].sort();
+        await client.query("SELECT * FROM users WHERE name=$1 FOR UPDATE", [sortedUsers[0]]);
+        await client.query("SELECT * FROM users WHERE name=$1 FOR UPDATE", [sortedUsers[1]]);
+
+        const s = await client.query("SELECT * FROM users WHERE name=$1",[from]);
+        const r = await client.query("SELECT * FROM users WHERE name=$1",[to]);
+
+        if(!s.rows[0] || !r.rows[0]) throw new Error("Recipient ID not found");
+        const isPinValid = await bcrypt.compare(pin, s.rows[0].pin_hash);
+        if(!isPinValid) throw new Error("Security PIN Denied");
+        if(Number(s.rows[0].balance) < amt) throw new Error("Insufficient Funds");
+
+        await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2",[amt, from]);
+        await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2",[amt, to]);
+
+        await client.query('COMMIT');
+        res.json({msg:"Transfer Successful"});
+    } catch (err) {
+        await client.query('ROLLBACK');
+        res.json({error: err.message});
+    }
 });
 
-app.listen(port, () => initDB());
+// 5. 启动服务器 (Server Start)
+app.listen(port, async ()=>{
+    await initDB();
+    console.log("Terminal Online: " + port);
+});
