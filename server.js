@@ -1,54 +1,53 @@
 require('dotenv').config();
-const express = require('express');
-const { Pool } = require('pg');          // ✅ 改用连接池，支持并发
-const bcrypt = require('bcryptjs');
-const session = require('express-session'); // ✅ 新增：会话管理
-const rateLimit = require('express-rate-limit'); // ✅ 新增：限流防暴力破解
+const express    = require('express');
+const { Pool }   = require('pg');
+const bcrypt     = require('bcryptjs');
+const session    = require('express-session');
+const rateLimit  = require('express-rate-limit');
 
-const app = express();
+const app  = express();
 const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
 // ─────────────────────────────────────────────
-// 1. 会话中间件 (Session Middleware)
-//    确保 SESSION_SECRET 在 .env 中配置
+// 1. Session 中间件
 // ─────────────────────────────────────────────
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'change_this_secret_in_production',
+    secret: process.env.SESSION_SECRET || 'change_this_in_production',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        httpOnly: true,   // ✅ 防止 JS 读取 Cookie
-        secure: process.env.NODE_ENV === 'production', // ✅ 生产环境强制 HTTPS
-        maxAge: 30 * 60 * 1000 // 30 分钟自动过期
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 30 * 60 * 1000
     }
 }));
 
 // ─────────────────────────────────────────────
-// 2. 限流配置 (Rate Limiting)
+// 2. 限流配置
 // ─────────────────────────────────────────────
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 分钟窗口
-    max: 10,                   // 最多 10 次尝试
+    windowMs: 15 * 60 * 1000,
+    max: 10,
     message: { error: 'Too many login attempts. Try again in 15 minutes.' },
     standardHeaders: true,
     legacyHeaders: false,
 });
 
 const transferLimiter = rateLimit({
-    windowMs: 60 * 1000,  // 1 分钟
-    max: 20,              // 最多 20 笔转账
+    windowMs: 60 * 1000,
+    max: 20,
     message: { error: 'Too many transfer requests. Please slow down.' },
 });
 
 // ─────────────────────────────────────────────
-// 3. 数据库连接池 (Database Pool)
+// 3. 数据库连接池
 // ─────────────────────────────────────────────
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    max: 10,                  // ✅ 最大 10 个并发连接
+    max: 10,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
 });
@@ -61,13 +60,11 @@ async function initDB() {
     try {
         await pool.query(`
             CREATE TABLE IF NOT EXISTS users (
-                name TEXT PRIMARY KEY,
-                balance NUMERIC DEFAULT 0,
-                pin_hash TEXT
+                name      TEXT PRIMARY KEY,
+                balance   NUMERIC DEFAULT 0,
+                pin_hash  TEXT
             )
         `);
-
-        // 初始化 Admin
         const admin = await pool.query("SELECT name FROM users WHERE name='Admin'");
         if (admin.rows.length === 0) {
             const hash = await bcrypt.hash("888888", 10);
@@ -81,8 +78,7 @@ async function initDB() {
 }
 
 // ─────────────────────────────────────────────
-// 4. 身份验证中间件 (Auth Middleware)
-//    ✅ 修复：钱包页面需真实登录，无法通过 ?u= 伪造
+// 4. 中间件：验证登录态
 // ─────────────────────────────────────────────
 function requireAuth(req, res, next) {
     if (!req.session.user) return res.redirect('/');
@@ -90,204 +86,193 @@ function requireAuth(req, res, next) {
 }
 
 // ─────────────────────────────────────────────
-// 5. 输入验证工具函数 (Input Validation)
+// 5. 输入验证
 // ─────────────────────────────────────────────
 function validateName(name) {
-    // 只允许字母、数字、下划线，3-30 字符
     return typeof name === 'string' && /^[a-zA-Z0-9_]{3,30}$/.test(name);
 }
-
 function validatePin(pin) {
-    // 只允许 6 位数字
     return typeof pin === 'string' && /^\d{6}$/.test(pin);
 }
 
 // ─────────────────────────────────────────────
-// 6. HTML 布局模板 (Layout Template)
+// 6. HTML 布局模板
 // ─────────────────────────────────────────────
 function layout(content, totalReserve = "1,000,000") {
-    return `
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>Quantum Financial Terminal</title>
-        <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
-        <style>
-            :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; }
-            body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
-            
-            .top-bar { 
-                position: fixed; top: 0; width: 100%; padding: 20px 40px; 
-                display: flex; justify-content: space-between; align-items: center;
-                background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
-                z-index: 100; box-sizing: border-box;
-            }
-            .reserve-box { color: var(--gold); font-size: 20px; font-weight: 900; letter-spacing: 2px; flex: 1; }
-            
-            .time-box { flex: 1; text-align: center; color: rgba(255,255,255,0.6); font-size: 14px; letter-spacing: 1px; }
-            #live-clock { display: block; color: #fff; font-size: 18px; font-weight: 900; }
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quantum Financial Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
+    <style>
+        :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
 
-            .rate-container { flex: 1; display: flex; justify-content: flex-end; }
-            .rate-card { 
-                background: rgba(0, 255, 136, 0.1); 
-                border: 1px solid var(--neon-green);
-                padding: 10px 25px;
-                border-radius: 12px;
-                color: var(--neon-green);
-                font-size: 24px;
-                font-weight: 900;
-                text-shadow: 0 0 10px rgba(0,255,136,0.5);
-                box-shadow: inset 0 0 15px rgba(0,255,136,0.1), 0 0 20px rgba(0,255,136,0.2);
-                animation: pulse 2s infinite;
-            }
+        .top-bar {
+            position: fixed; top: 0; width: 100%; padding: 20px 40px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            z-index: 100; box-sizing: border-box;
+        }
+        .reserve-box { color: var(--gold); font-size: 20px; font-weight: 900; letter-spacing: 2px; flex: 1; }
+        .time-box { flex: 1; text-align: center; color: rgba(255,255,255,0.6); font-size: 14px; letter-spacing: 1px; }
+        #live-clock { display: block; color: #fff; font-size: 18px; font-weight: 900; }
 
-            @keyframes pulse {
-                0% { opacity: 0.8; transform: scale(1); }
-                50% { opacity: 1; transform: scale(1.02); }
-                100% { opacity: 0.8; transform: scale(1); }
-            }
+        .rate-container { flex: 1; display: flex; justify-content: flex-end; }
+        .rate-card {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid var(--neon-green);
+            padding: 10px 25px; border-radius: 12px;
+            color: var(--neon-green); font-size: 24px; font-weight: 900;
+            text-shadow: 0 0 10px rgba(0,255,136,0.5);
+            box-shadow: inset 0 0 15px rgba(0,255,136,0.1), 0 0 20px rgba(0,255,136,0.2);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%   { opacity: 0.8; transform: scale(1); }
+            50%  { opacity: 1;   transform: scale(1.02); }
+            100% { opacity: 0.8; transform: scale(1); }
+        }
 
-            .container { display: flex; height: 100vh; width: 100vw; }
-            .left-zone { flex: 1.2; position: relative; display: flex; align-items: center; justify-content: center; }
-            #canvas { width: 100%; height: 100%; cursor: move; }
+        .container  { display: flex; height: 100vh; width: 100vw; }
+        .left-zone  { flex: 1.2; position: relative; display: flex; align-items: center; justify-content: center; }
+        #canvas     { width: 100%; height: 100%; cursor: move; }
+        .right-zone { flex: 0.8; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.5); backdrop-filter: blur(10px); border-left: 1px solid rgba(255,255,255,0.05); }
+        .panel      { width: 85%; max-width: 400px; }
 
-            .right-zone { flex: 0.8; display: flex; align-items: center; justify-content: center; background: rgba(10,10,10,0.5); backdrop-filter: blur(10px); border-left: 1px solid rgba(255,255,255,0.05); }
-            .panel { width: 85%; max-width: 400px; }
-            
-            .card { background: rgba(255,255,255,0.03); padding: 30px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
-            h2 { color: var(--gold); margin-top: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 3px; }
-            
-            input { width: 100%; padding: 16px; margin: 10px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 8px; font-family: 'Orbitron'; font-size: 14px; box-sizing: border-box; }
-            button { width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); color: #000; border: none; border-radius: 8px; font-family: 'Orbitron'; font-weight: 900; font-size: 16px; cursor: pointer; transition: 0.3s; }
-            button:hover { background: #fff; transform: translateY(-2px); }
-            
-            .leaderboard { position: absolute; bottom: 40px; left: 40px; font-size: 12px; color: rgba(255,255,255,0.4); line-height: 2; }
+        .card { background: rgba(255,255,255,0.03); padding: 30px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+        h2    { color: var(--gold); margin-top: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 3px; }
 
-            @media (max-width: 768px) {
-                .container { flex-direction: column; overflow-y: auto; }
-                .left-zone { height: 50vh; width: 100%; }
-                .right-zone { width: 100%; padding: 40px 0; }
-                .top-bar { padding: 10px 20px; flex-wrap: wrap; }
-                .rate-card { font-size: 16px; padding: 5px 15px; }
-                .reserve-box { font-size: 14px; }
-            }
-        </style>
-    </head>
-    <body>
-        <div class="top-bar">
-            <div class="reserve-box">RESERVE: ${totalReserve} COIN</div>
-            <div class="time-box">
-                <span id="live-date">---</span>
-                <span id="live-clock">00:00:00</span>
-            </div>
-            <div class="rate-container">
-                <div class="rate-card">1 COIN = 100 USD</div>
+        input  { width: 100%; padding: 16px; margin: 10px 0; background: #000; border: 1px solid #333; color: var(--gold); border-radius: 8px; font-family: 'Orbitron'; font-size: 14px; box-sizing: border-box; }
+        button { width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); color: #000; border: none; border-radius: 8px; font-family: 'Orbitron'; font-weight: 900; font-size: 16px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #fff; transform: translateY(-2px); }
+
+        .leaderboard { position: absolute; bottom: 40px; left: 40px; font-size: 12px; color: rgba(255,255,255,0.4); line-height: 2; }
+
+        @media (max-width: 768px) {
+            .container  { flex-direction: column; overflow-y: auto; }
+            .left-zone  { height: 50vh; width: 100%; }
+            .right-zone { width: 100%; padding: 40px 0; }
+            .top-bar    { padding: 10px 20px; flex-wrap: wrap; }
+            .rate-card  { font-size: 16px; padding: 5px 15px; }
+            .reserve-box { font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="reserve-box">RESERVE: ${totalReserve} COIN</div>
+        <div class="time-box">
+            <span id="live-date">---</span>
+            <span id="live-clock">00:00:00</span>
+        </div>
+        <div class="rate-container">
+            <div class="rate-card">1 COIN = 100 USD</div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="left-zone">
+            <canvas id="canvas"></canvas>
+            <div class="leaderboard">
+                SYSTEM_STATUS: ACTIVE<br>
+                ENCRYPTION: QUANTUM_AES_256<br>
+                LOCATION: PENANG_TERMINAL
             </div>
         </div>
-
-        <div class="container">
-            <div class="left-zone">
-                <canvas id="canvas"></canvas>
-                <div class="leaderboard">
-                    SYSTEM_STATUS: ACTIVE<br>
-                    ENCRYPTION: QUANTUM_AES_256<br>
-                    LOCATION: PENANG_TERMINAL
-                </div>
-            </div>
-            <div class="right-zone">
-                <div class="panel">${content}</div>
-            </div>
+        <div class="right-zone">
+            <div class="panel">${content}</div>
         </div>
+    </div>
 
-        <script>
-            function updateClock() {
-                const now = new Date();
-                const options = { year: 'numeric', month: 'short', day: '2-digit' };
-                document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', options).toUpperCase();
-                document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
-            }
-            setInterval(updateClock, 1000);
-            updateClock();
+    <script>
+        // 实时时钟
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'2-digit' }).toUpperCase();
+            document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', { hour12: false });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
 
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
-            let w, h, particles = [];
+        // 3D 地球仪
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let w, h, particles = [];
 
-            function init() {
-                w = canvas.width = window.innerWidth > 768 ? window.innerWidth * 0.6 : window.innerWidth;
-                h = canvas.height = window.innerHeight;
-                particles = [];
-                for(let i=0; i<400; i++) {
-                    let theta = Math.random() * Math.PI * 2;
-                    let phi = Math.acos((Math.random() * 2) - 1);
-                    particles.push({
-                        x: Math.sin(phi) * Math.cos(theta),
-                        y: Math.sin(phi) * Math.sin(theta),
-                        z: Math.cos(phi)
-                    });
-                }
-            }
-
-            let angleY = 0;
-            function draw() {
-                ctx.clearRect(0,0,w,h);
-                angleY += 0.002;
-                const radius = Math.min(w, h) * 0.35;
-                
-                ctx.beginPath();
-                ctx.strokeStyle = 'rgba(240, 185, 11, 0.05)';
-                for(let i=0; i<particles.length; i+=10) {
-                    for(let j=0; j<particles.length; j+=40) {
-                        let p1 = project(particles[i], radius);
-                        let p2 = project(particles[j], radius);
-                        ctx.moveTo(p1.x, p1.y);
-                        ctx.lineTo(p2.x, p2.y);
-                    }
-                }
-                ctx.stroke();
-
-                particles.forEach(p => {
-                    let proj = project(p, radius);
-                    let opacity = (p.transformedZ + 1) / 2;
-                    ctx.fillStyle = \`rgba(240, 185, 11, \${opacity})\`;
-                    ctx.beginPath();
-                    ctx.arc(proj.x, proj.y, opacity * 2, 0, Math.PI * 2);
-                    ctx.fill();
-                    if(opacity > 0.8) {
-                        ctx.shadowBlur = 10;
-                        ctx.shadowColor = '#f0b90b';
-                        ctx.fill();
-                        ctx.shadowBlur = 0;
-                    }
+        function init() {
+            w = canvas.width  = window.innerWidth > 768 ? window.innerWidth * 0.6 : window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            particles = [];
+            for (let i = 0; i < 400; i++) {
+                const theta = Math.random() * Math.PI * 2;
+                const phi   = Math.acos((Math.random() * 2) - 1);
+                particles.push({
+                    x: Math.sin(phi) * Math.cos(theta),
+                    y: Math.sin(phi) * Math.sin(theta),
+                    z: Math.cos(phi)
                 });
-                requestAnimationFrame(draw);
             }
+        }
 
-            function project(p, r) {
-                let x = p.x, y = p.y, z = p.z;
-                let cosY = Math.cos(angleY), sinY = Math.sin(angleY);
-                let x1 = x * cosY - z * sinY;
-                let z1 = z * cosY + x * sinY;
-                p.transformedZ = z1;
-                return { x: x1 * r + w/2, y: y * r + h/2 };
+        let angleY = 0;
+        function draw() {
+            ctx.clearRect(0, 0, w, h);
+            angleY += 0.002;
+            const radius = Math.min(w, h) * 0.35;
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(240, 185, 11, 0.05)';
+            for (let i = 0; i < particles.length; i += 10) {
+                for (let j = 0; j < particles.length; j += 40) {
+                    const p1 = project(particles[i], radius);
+                    const p2 = project(particles[j], radius);
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                }
             }
+            ctx.stroke();
 
-            window.addEventListener('resize', init);
-            init(); draw();
-        </script>
-    </body>
-    </html>`;
+            particles.forEach(p => {
+                const proj    = project(p, radius);
+                const opacity = (p.transformedZ + 1) / 2;
+                ctx.fillStyle = \`rgba(240, 185, 11, \${opacity})\`;
+                ctx.beginPath();
+                ctx.arc(proj.x, proj.y, opacity * 2, 0, Math.PI * 2);
+                ctx.fill();
+                if (opacity > 0.8) {
+                    ctx.shadowBlur  = 10;
+                    ctx.shadowColor = '#f0b90b';
+                    ctx.fill();
+                    ctx.shadowBlur  = 0;
+                }
+            });
+            requestAnimationFrame(draw);
+        }
+
+        function project(p, r) {
+            const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+            const x1   = p.x * cosY - p.z * sinY;
+            const z1   = p.z * cosY + p.x * sinY;
+            p.transformedZ = z1;
+            return { x: x1 * r + w / 2, y: p.y * r + h / 2 };
+        }
+
+        window.addEventListener('resize', init);
+        init(); draw();
+    </script>
+</body>
+</html>`;
 }
 
 // ─────────────────────────────────────────────
-// 7. 页面路由 (Page Routes)
+// 7. 页面路由
 // ─────────────────────────────────────────────
 app.get('/', async (req, res) => {
-    // ✅ 已登录则直接跳转钱包
     if (req.session.user) return res.redirect('/wallet');
     try {
-        const stats = await pool.query("SELECT SUM(balance) as total FROM users");
+        const stats   = await pool.query("SELECT SUM(balance) as total FROM users");
         const reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
         res.send(layout(`
             <div class="card">
@@ -301,22 +286,23 @@ app.get('/', async (req, res) => {
                 <button style="background:transparent; border:1px solid var(--gold); color:var(--gold);" onclick="register()">CREATE ACCOUNT</button>
             </div>
             <script>
-                async function login(){
+                async function login() {
                     const name = document.getElementById('name').value.trim();
-                    const pin = document.getElementById('pin').value;
-                    if(!name || !pin) return alert("Required: ID & PIN");
-                    const res = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
+                    const pin  = document.getElementById('pin').value;
+                    if (!name || !pin) return alert("Required: ID & PIN");
+                    const res  = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, pin }) });
                     const data = await res.json();
-                    if(data.ok) location.href='/wallet'; else alert(data.error);
+                    if (data.ok) location.href = '/wallet'; else alert(data.error);
                 }
-                async function register(){
+                async function register() {
                     const name = document.getElementById('rname').value.trim();
-                    const pin = document.getElementById('rpin').value;
-                    if(!name || !pin) return alert("Required: ID & PIN");
-                    const res = await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,pin})});
-                    const data = await res.json(); alert(data.msg || data.error);
+                    const pin  = document.getElementById('rpin').value;
+                    if (!name || !pin) return alert("Required: ID & PIN");
+                    const res  = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name, pin }) });
+                    const data = await res.json();
+                    alert(data.msg || data.error);
                 }
-            </script>
+            <\/script>
         `, reserve));
     } catch (e) {
         console.error("GET / error:", e.message);
@@ -324,16 +310,15 @@ app.get('/', async (req, res) => {
     }
 });
 
-// ✅ 修复：requireAuth 确保只有真实登录的用户才能访问钱包
 app.get('/wallet', requireAuth, async (req, res) => {
-    const u = req.session.user; // ✅ 从 Session 获取用户名，而非 URL 参数
+    const u = req.session.user;
     try {
         const r = await pool.query("SELECT name, balance FROM users WHERE name=$1", [u]);
         if (!r.rows[0]) {
             req.session.destroy();
             return res.redirect('/');
         }
-        const stats = await pool.query("SELECT SUM(balance) as total FROM users");
+        const stats   = await pool.query("SELECT SUM(balance) as total FROM users");
         const reserve = Number(stats.rows[0].total || 1000000).toLocaleString();
 
         res.send(layout(`
@@ -346,34 +331,34 @@ app.get('/wallet', requireAuth, async (req, res) => {
                 </div>
                 <div style="margin:25px 0; border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
                     <h2 style="font-size:14px;">Transfer Fund</h2>
-                    <input id="to" placeholder="RECIPIENT ID" maxlength="30">
-                    <input id="amt" type="number" placeholder="AMOUNT" min="1">
+                    <input id="to"       placeholder="RECIPIENT ID"  maxlength="30">
+                    <input id="amt"      type="number" placeholder="AMOUNT" min="1">
                     <input id="auth_pin" type="password" placeholder="CONFIRM PIN" maxlength="6">
                     <button id="send-btn" onclick="send()">AUTHORIZE TRANSFER</button>
                     <button onclick="logout()" style="background:#222; color:#fff; margin-top:10px; font-size:12px;">LOGOUT TERMINAL</button>
                 </div>
             </div>
             <script>
-                async function send(){
-                    const to = document.getElementById('to').value.trim();
+                async function send() {
+                    const to  = document.getElementById('to').value.trim();
                     const amt = document.getElementById('amt').value;
                     const pin = document.getElementById('auth_pin').value;
-                    if(!to || !amt || !pin) return alert("Complete all fields");
+                    if (!to || !amt || !pin) return alert("Complete all fields");
                     const btn = document.getElementById('send-btn');
                     btn.disabled = true; btn.innerText = "ENCRYPTING...";
                     try {
-                        const res = await fetch('/api/transfer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,amount:amt,pin})});
+                        const res  = await fetch('/api/transfer', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ to, amount: amt, pin }) });
                         const data = await res.json();
                         alert(data.msg || data.error);
-                        if(data.ok) location.reload();
-                    } catch(e) { alert("Network Error"); }
+                        if (data.ok) location.reload();
+                    } catch (e) { alert("Network Error"); }
                     btn.disabled = false; btn.innerText = "AUTHORIZE TRANSFER";
                 }
-                async function logout(){
-                    await fetch('/api/logout', {method:'POST'});
+                async function logout() {
+                    await fetch('/api/logout', { method: 'POST' });
                     location.href = '/';
                 }
-            </script>
+            <\/script>
         `, reserve));
     } catch (e) {
         console.error("GET /wallet error:", e.message);
@@ -382,15 +367,12 @@ app.get('/wallet', requireAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────
-// 8. API 接口 (API Endpoints)
+// 8. API 接口
 // ─────────────────────────────────────────────
 app.post('/api/register', async (req, res) => {
     const { name, pin } = req.body;
-
-    // ✅ 输入验证
     if (!validateName(name)) return res.json({ error: "ID must be 3-30 alphanumeric characters" });
     if (!validatePin(pin))   return res.json({ error: "PIN must be exactly 6 digits" });
-
     try {
         const hash = await bcrypt.hash(pin, 10);
         await pool.query("INSERT INTO users VALUES ($1, 0, $2)", [name, hash]);
@@ -402,20 +384,12 @@ app.post('/api/register', async (req, res) => {
 
 app.post('/api/login', loginLimiter, async (req, res) => {
     const { name, pin } = req.body;
-
-    // ✅ 输入验证
-    if (!validateName(name) || !validatePin(pin)) {
-        return res.json({ error: "Invalid credentials format" });
-    }
-
+    if (!validateName(name) || !validatePin(pin)) return res.json({ error: "Invalid credentials format" });
     try {
-        const r = await pool.query("SELECT * FROM users WHERE name=$1", [name]);
+        const r  = await pool.query("SELECT * FROM users WHERE name=$1", [name]);
         if (r.rows.length === 0) return res.json({ error: "User not found" });
-
         const ok = await bcrypt.compare(pin, r.rows[0].pin_hash);
         if (!ok) return res.json({ error: "Invalid PIN" });
-
-        // ✅ 登录成功后再生成新 Session（防止 Session 固定攻击）
         req.session.regenerate((err) => {
             if (err) return res.json({ error: "Session Error" });
             req.session.user = name;
@@ -428,41 +402,37 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 app.post('/api/logout', (req, res) => {
-    req.session.destroy(() => {
-        res.json({ ok: true });
-    });
+    req.session.destroy(() => res.json({ ok: true }));
 });
 
-// ✅ 修复：from 来自 Session，而非请求体，无法伪造
 app.post('/api/transfer', requireAuth, transferLimiter, async (req, res) => {
-    const from = req.session.user; // ✅ 从服务端 Session 取，不信任客户端
+    const from = req.session.user;
     const { to, amount, pin } = req.body;
     const amt = Number(amount);
 
-    // ✅ 输入验证
-    if (!validateName(to))        return res.json({ error: "Invalid recipient ID" });
-    if (!validatePin(pin))         return res.json({ error: "Invalid PIN format" });
-    if (isNaN(amt) || amt <= 0)    return res.json({ error: "Invalid Amount" });
-    if (from === to)               return res.json({ error: "Cannot send to self" });
+    if (!validateName(to))      return res.json({ error: "Invalid recipient ID" });
+    if (!validatePin(pin))      return res.json({ error: "Invalid PIN format" });
+    if (isNaN(amt) || amt <= 0) return res.json({ error: "Invalid Amount" });
+    if (from === to)            return res.json({ error: "Cannot send to self" });
 
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
 
-        // ✅ 按字典序锁定防死锁
+        // 按字典序锁定两行，防止死锁
         const [lockFirst, lockSecond] = [from, to].sort();
         await client.query("SELECT 1 FROM users WHERE name=$1 FOR UPDATE", [lockFirst]);
-        await client.query("SELECT 1 FROM users WHERE name=$2 FOR UPDATE", [lockSecond]);
+        await client.query("SELECT 1 FROM users WHERE name=$1 FOR UPDATE", [lockSecond]);
 
         const s = await client.query("SELECT * FROM users WHERE name=$1", [from]);
-        const r = await client.query("SELECT name FROM users WHERE name=$1", [to]);
+        const r = await client.query("SELECT name  FROM users WHERE name=$1", [to]);
 
-        if (!r.rows[0])                         throw new Error("Recipient ID not found");
-        if (!(await bcrypt.compare(pin, s.rows[0].pin_hash))) throw new Error("Security PIN Denied");
-        if (Number(s.rows[0].balance) < amt)    throw new Error("Insufficient Funds");
+        if (!r.rows[0])                                                  throw new Error("Recipient ID not found");
+        if (!(await bcrypt.compare(pin, s.rows[0].pin_hash)))            throw new Error("Security PIN Denied");
+        if (Number(s.rows[0].balance) < amt)                             throw new Error("Insufficient Funds");
 
-        await client.query("UPDATE users SET balance=balance-$1 WHERE name=$2", [amt, from]);
-        await client.query("UPDATE users SET balance=balance+$1 WHERE name=$2", [amt, to]);
+        await client.query("UPDATE users SET balance = balance - $1 WHERE name = $2", [amt, from]);
+        await client.query("UPDATE users SET balance = balance + $1 WHERE name = $2", [amt, to]);
 
         await client.query('COMMIT');
         res.json({ ok: true, msg: "Transfer Successful" });
@@ -470,12 +440,12 @@ app.post('/api/transfer', requireAuth, transferLimiter, async (req, res) => {
         await client.query('ROLLBACK');
         res.json({ error: err.message });
     } finally {
-        client.release(); // ✅ 用完一定要归还连接池
+        client.release();
     }
 });
 
 // ─────────────────────────────────────────────
-// 9. 全局错误处理 (Global Error Handler)
+// 9. 全局错误处理
 // ─────────────────────────────────────────────
 app.use((err, req, res, next) => {
     console.error("Unhandled error:", err.message);
@@ -483,7 +453,7 @@ app.use((err, req, res, next) => {
 });
 
 // ─────────────────────────────────────────────
-// 10. 启动服务器 (Server Start)
+// 10. 启动服务器
 // ─────────────────────────────────────────────
 app.listen(port, async () => {
     await initDB();
