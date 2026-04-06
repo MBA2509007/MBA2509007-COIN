@@ -2,222 +2,255 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MBA ONLINE EXCHANGE | PENANG TERMINAL</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Quantum Financial Terminal | 1,000,000 COIN</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;900&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --gold: #f0b90b;
-            --dark: #050505;
-            --green: #00ff7f;
-            --red: #ff4d4d;
-            --glass: rgba(255, 255, 255, 0.05);
+        :root { --gold: #f0b90b; --bg: #050505; --neon-green: #00ff88; --error: #ff4d4d; }
+        body { margin: 0; background: var(--bg); color: #fff; font-family: 'Orbitron', sans-serif; overflow: hidden; }
+        
+        /* 顶部状态栏 */
+        .top-bar { 
+            position: fixed; top: 0; width: 100%; padding: 20px 40px; 
+            display: flex; justify-content: space-between; align-items: center;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            z-index: 100; box-sizing: border-box;
+        }
+        .reserve-box { color: var(--gold); font-size: 20px; font-weight: 900; letter-spacing: 2px; }
+        .time-box { text-align: center; color: rgba(255,255,255,0.6); font-size: 14px; }
+        #live-clock { display: block; color: #fff; font-size: 18px; font-weight: 900; }
+        .rate-card { 
+            background: rgba(0, 255, 136, 0.1); border: 1px solid var(--neon-green);
+            padding: 10px 25px; border-radius: 12px; color: var(--neon-green);
+            font-size: 22px; font-weight: 900; animation: pulse 2s infinite;
         }
 
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
+        /* 布局 */
+        .container { display: flex; height: 100vh; width: 100vw; }
+        .left-zone { flex: 1.2; position: relative; }
+        #canvas { width: 100%; height: 100%; }
+        .right-zone { 
+            flex: 0.8; display: flex; align-items: center; justify-content: center; 
+            background: rgba(10,10,10,0.5); backdrop-filter: blur(15px); 
+            border-left: 1px solid rgba(255,255,255,0.05); 
+        }
+        .panel { width: 85%; max-width: 400px; }
+        .card { 
+            background: rgba(255,255,255,0.03); padding: 30px; border-radius: 20px; 
+            border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 20px 50px rgba(0,0,0,0.5); 
         }
 
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background-color: var(--dark);
-            color: white;
-            font-family: 'Orbitron', sans-serif;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+        /* 表单元素 */
+        h2 { color: var(--gold); margin: 0 0 20px 0; font-size: 1.5rem; letter-spacing: 3px; }
+        input { 
+            width: 100%; padding: 16px; margin: 10px 0; background: #000; 
+            border: 1px solid #333; color: var(--gold); border-radius: 8px; 
+            font-family: 'Orbitron'; font-size: 14px; box-sizing: border-box; 
         }
-
-        /* 背景装饰 (模拟光纤/网格感) */
-        body::before {
-            content: "";
-            position: absolute;
-            width: 200%;
-            height: 200%;
-            background-image: 
-                linear-gradient(rgba(240, 185, 11, 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(240, 185, 11, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px;
-            transform: rotate(15deg);
-            z-index: 0;
+        button { 
+            width: 100%; padding: 18px; margin-top: 15px; background: var(--gold); 
+            color: #000; border: none; border-radius: 8px; font-family: 'Orbitron'; 
+            font-weight: 900; cursor: pointer; transition: 0.3s; 
         }
-
-        /* 右上角：汇率卡片与节点状态 */
-        .status-container {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 100;
-            background: rgba(0, 0, 0, 0.8);
-            border: 1px solid var(--green);
-            padding: 12px 18px;
-            border-radius: 8px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 0 20px rgba(0, 255, 127, 0.15);
-        }
-
-        .node-tag {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-
-        .pulse-dot {
-            width: 8px;
-            height: 8px;
-            background: var(--red);
-            border-radius: 50%;
-            animation: pulse-red 1.5s infinite;
-            box-shadow: 0 0 8px var(--red);
-        }
-
-        @keyframes pulse-red {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(0.8); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-
-        .status-container h2 {
-            margin: 0;
-            font-size: 0.65rem;
-            letter-spacing: 1px;
-        }
-
-        .price-text {
-            margin: 5px 0 0 0;
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: white;
-            white-space: nowrap;
-        }
-
-        /* 中央：登录终端面板 */
-        .login-card {
-            position: relative;
-            z-index: 10;
-            width: 90%;
-            max-width: 360px;
-            background: var(--glass);
-            border: 1px solid rgba(240, 185, 11, 0.3);
-            border-top: 4px solid var(--gold);
-            padding: 40px 30px;
-            border-radius: 0 0 10px 10px;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
-            text-align: center;
-        }
-
-        .login-card h1 {
-            color: var(--gold);
-            font-size: 1.4rem;
-            margin-bottom: 30px;
-            letter-spacing: 5px;
-            text-shadow: 0 0 10px rgba(240, 185, 11, 0.3);
-        }
-
-        .input-field {
-            width: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(240, 185, 11, 0.4);
-            padding: 15px;
-            margin-bottom: 15px;
-            color: white;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 0.9rem;
-            outline: none;
-            transition: 0.3s;
-        }
-
-        .input-field:focus {
-            border-color: var(--gold);
-            box-shadow: 0 0 15px rgba(240, 185, 11, 0.2);
-        }
-
-        .login-btn {
-            width: 100%;
-            padding: 15px;
-            background: var(--gold);
-            color: black;
-            border: none;
-            font-family: 'Orbitron', sans-serif;
-            font-weight: 700;
-            font-size: 1rem;
-            cursor: pointer;
-            transition: 0.3s;
-            letter-spacing: 2px;
-        }
-
-        .login-btn:hover {
-            background: #ffcf33;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(240, 185, 11, 0.4);
-        }
-
-        .reg-footer {
-            margin-top: 25px;
-            font-size: 0.75rem;
-            color: #888;
-        }
-
-        .reg-link {
-            color: var(--gold);
-            cursor: pointer;
-            text-decoration: underline;
-            margin-left: 5px;
-        }
-
-        /* 移动端适配 */
-        @media (max-width: 480px) {
-            .status-container {
-                top: 10px;
-                right: 10px;
-                padding: 10px;
-            }
-            .price-text { font-size: 1rem; }
+        button:hover { background: #fff; transform: translateY(-2px); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .hidden { display: none !important; }
+        @keyframes pulse { 0%, 100% { opacity: 0.8; } 50% { opacity: 1; } }
+        
+        @media (max-width: 768px) {
+            .container { flex-direction: column; overflow-y: auto; }
+            .left-zone { height: 40vh; }
+            .right-zone { flex: none; padding: 40px 0; }
         }
     </style>
 </head>
 <body>
 
-    <div class="status-container">
-        <div class="node-tag">
-            <div class="pulse-dot"></div>
-            <h2 style="color: var(--red);">PENANG_NODE_ACTIVE</h2>
+    <div class="top-bar">
+        <div class="reserve-box">RESERVE: 1,000,000 COIN</div>
+        <div class="time-box">
+            <span id="live-date">---</span>
+            <span id="live-clock">00:00:00</span>
         </div>
-        <h2 style="color: var(--green);">LIVE VALUATION</h2>
-        <p class="price-text">1 COIN = 100 USD</p>
+        <div class="rate-card">1 COIN ≈ 100 USD</div>
     </div>
 
-    <div class="login-card">
-        <h1>MBA_TERMINAL</h1>
+    <div class="container">
+        <div class="left-zone">
+            <canvas id="canvas"></canvas>
+        </div>
         
-        <input type="text" class="input-field" placeholder="CLIENT ID" id="username">
-        <input type="password" class="input-field" placeholder="SECURE PIN" maxlength="6" id="pin">
-        
-        <button class="login-btn" onclick="handleLogin()">LOGIN</button>
-        
-        <div class="reg-footer">
-            SYSTEM ACCESS REQUIRED? <span class="reg-link" onclick="handleRegister()">REGISTER</span>
+        <div class="right-zone">
+            <div class="panel">
+                <div id="auth-view" class="card">
+                    <h2>Terminal Access</h2>
+                    <input id="login-name" placeholder="IDENTIFICATION ID">
+                    <input id="login-pin" type="password" placeholder="SECURITY PIN">
+                    <button onclick="handleLogin()">INITIALIZE LOGIN</button>
+                    
+                    <div style="margin:25px 0; height:1px; background:rgba(255,255,255,0.1); position:relative;">
+                        <span style="position:absolute; top:-10px; left:45%; background:#111; padding:0 10px; font-size:10px; color:rgba(255,255,255,0.3);">OR</span>
+                    </div>
+                    
+                    <input id="reg-name" placeholder="NEW UNIQUE ID">
+                    <input id="reg-pin" type="password" placeholder="6-DIGIT PIN">
+                    <button style="background:transparent; border:1px solid var(--gold); color:var(--gold);" onclick="handleRegister()">CREATE IDENTITY</button>
+                </div>
+
+                <div id="wallet-view" class="card hidden">
+                    <div style="font-size:10px; color:rgba(255,255,255,0.4); letter-spacing:2px;">AUTHENTICATED_AGENT</div>
+                    <h2 id="display-name" style="margin-bottom:5px;">---</h2>
+                    
+                    <div style="font-size:32px; color:#fff; font-weight:900; margin:25px 0; padding:15px; background:rgba(255,255,255,0.02); border-radius:10px;">
+                        <span style="font-size:12px; color:var(--gold); display:block; margin-bottom:5px;">CURRENT BALANCE:</span>
+                        <span id="display-balance">0.00</span> <span style="font-size:14px; color:var(--gold);">COIN</span>
+                    </div>
+
+                    <div style="border-top:1px solid rgba(255,255,255,0.1); padding-top:20px;">
+                        <h2 style="font-size:14px;">Secure Transfer</h2>
+                        <input id="tx-to" placeholder="RECIPIENT ID">
+                        <input id="tx-amount" type="number" placeholder="AMOUNT">
+                        <input id="tx-pin" type="password" placeholder="CONFIRM PIN">
+                        <button id="tx-btn" onclick="handleTransfer()">AUTHORIZE TRANSFER</button>
+                        <button onclick="handleLogout()" style="background:none; color:rgba(255,255,255,0.3); font-size:11px; margin-top:15px;">TERMINATE SESSION</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        function handleLogin() {
-            console.log("Attempting terminal access...");
-            // 这里对接你的 server.js 登录接口
+        // --- 核心业务逻辑 ---
+        const API_BASE = '/api'; // 如果是前后端分离，请填写完整URL
+
+        async function updateUI() {
+            const token = localStorage.getItem('jwt_token');
+            if (!token) {
+                document.getElementById('auth-view').classList.remove('hidden');
+                document.getElementById('wallet-view').classList.add('hidden');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                
+                if (data.ok) {
+                    document.getElementById('display-name').innerText = data.user.name;
+                    document.getElementById('display-balance').innerText = Number(data.user.balance).toLocaleString();
+                    document.getElementById('auth-view').classList.add('hidden');
+                    document.getElementById('wallet-view').classList.remove('hidden');
+                } else {
+                    handleLogout();
+                }
+            } catch (e) { console.error("Session Error"); }
         }
 
-        function handleRegister() {
-            alert("PROTOCOL: REDIRECTING TO REGISTRATION NODE...");
-            // 这里对接注册逻辑
+        async function handleLogin() {
+            const name = document.getElementById('login-name').value;
+            const pin = document.getElementById('login-pin').value;
+            const res = await fetch(`${API_BASE}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, pin })
+            });
+            const data = await res.json();
+            if (data.token) {
+                localStorage.setItem('jwt_token', data.token);
+                updateUI();
+            } else alert(data.error);
         }
+
+        async function handleRegister() {
+            const name = document.getElementById('reg-name').value;
+            const pin = document.getElementById('reg-pin').value;
+            const res = await fetch(`${API_BASE}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, pin })
+            });
+            const data = await res.json();
+            alert(data.msg || data.error);
+        }
+
+        async function handleTransfer() {
+            const to = document.getElementById('tx-to').value;
+            const amount = document.getElementById('tx-amount').value;
+            const pin = document.getElementById('tx-pin').value;
+            const token = localStorage.getItem('jwt_token');
+            const btn = document.getElementById('tx-btn');
+
+            btn.disabled = true;
+            btn.innerText = "ENCRYPTING...";
+
+            try {
+                const res = await fetch(`${API_BASE}/transfer`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ to, amount, pin })
+                });
+                const data = await res.json();
+                alert(data.msg || data.error);
+                updateUI();
+            } catch (e) { alert("Network Error"); }
+            finally {
+                btn.disabled = false;
+                btn.innerText = "AUTHORIZE TRANSFER";
+            }
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('jwt_token');
+            updateUI();
+        }
+
+        // --- 视觉动画逻辑 ---
+        function runClock() {
+            const now = new Date();
+            document.getElementById('live-date').innerText = now.toLocaleDateString('en-US', {month:'short', day:'2-digit', year:'numeric'}).toUpperCase();
+            document.getElementById('live-clock').innerText = now.toLocaleTimeString('en-US', {hour12:false});
+        }
+        setInterval(runClock, 1000); runClock();
+
+        // 3D 地球仪 Canvas 代码 (已优化渲染)
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let w, h, particles = [], angleY = 0;
+
+        function init() {
+            w = canvas.width = window.innerWidth;
+            h = canvas.height = window.innerHeight;
+            particles = Array.from({length: 300}, () => {
+                const t = Math.random() * Math.PI * 2, p = Math.acos(Math.random()*2 - 1);
+                return { x: Math.sin(p)*Math.cos(t), y: Math.sin(p)*Math.sin(t), z: Math.cos(p) };
+            });
+        }
+
+        function draw() {
+            ctx.clearRect(0,0,w,h);
+            angleY += 0.0015;
+            const r = Math.min(w, h) * 0.3;
+            particles.forEach(p => {
+                const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
+                const x1 = p.x * cosY - p.z * sinY;
+                const z1 = p.z * cosY + p.x * sinY;
+                const op = (z1 + 1) / 2;
+                ctx.fillStyle = `rgba(240, 185, 11, ${op})`;
+                ctx.beginPath();
+                ctx.arc(x1 * r + w/2, p.y * r + h/2, op * 2, 0, Math.PI*2);
+                ctx.fill();
+            });
+            requestAnimationFrame(draw);
+        }
+
+        window.addEventListener('resize', init);
+        init(); draw(); updateUI();
     </script>
-
 </body>
 </html>
