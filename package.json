@@ -1,23 +1,21 @@
 {
-  "name": "quantum-wallet",
+  "name": "mba-exchange-terminal",
   "version": "1.0.0",
-  "description": "A secure mobile-optimized quantum wallet application.",
+  "description": "MBA Online Centralized Exchange Terminal",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon server.js"
   },
-"dependencies": {
-  "bcryptjs": "^2.4.3",
-  "dotenv": "^16.0.0",
-  "express": "^4.18.0",
-  "express-rate-limit": "^7.0.0",
-  "express-session": "^1.17.3",
-  "pg": "^8.11.0"
-},
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
-  "author": "",
+  "author": "Admin",
   "license": "ISC"
 }
