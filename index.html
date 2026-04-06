@@ -140,16 +140,26 @@
             cursor: pointer;
             text-decoration: underline;
         }
+        @keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.3; transform: scale(0.9); }
+    100% { opacity: 1; transform: scale(1); }
+}
     </style>
 </head>
 <body>
 
     <canvas id="globe-canvas"></canvas>
 
-    <div class="rate-card">
-        <h2>LIVE VALUATION</h2>
-        <p>1 COIN = 100 USD</p>
+<div class="rate-card">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+        <div style="width:8px; height:8px; background:#ff4d4d; border-radius:50%; animation: pulse 1s infinite; box-shadow: 0 0 8px #ff4d4d;"></div>
+        <h2 style="font-size:0.6rem; color: #ff4d4d; letter-spacing: 1px; margin:0; font-weight: bold;">PENANG_NODE_ACTIVE</h2>
     </div>
+
+    <h2 style="color: var(--green-glow); font-size: 0.8rem; margin:0;">LIVE VALUATION</h2>
+    <p style="margin: 5px 0 0 0; font-size: 1.2rem;">1 COIN = 100 USD</p>
+</div>
 
     <div class="terminal-box">
         <h1>MBA_TERMINAL</h1>
