@@ -3,14 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MBA ONLINE EXCHANGE</title>
+    <title>MBA ONLINE EXCHANGE | PENANG TERMINAL</title>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --gold: #f0b90b;
             --dark: #050505;
-            --green-glow: #00ff7f;
+            --green: #00ff7f;
+            --red: #ff4d4d;
             --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body, html {
@@ -21,169 +27,197 @@
             background-color: var(--dark);
             color: white;
             font-family: 'Orbitron', sans-serif;
-            overflow: hidden; /* 防止手机端出现滚动条 */
+            overflow: hidden;
             display: flex;
             justify-content: center;
             align-items: center;
         }
 
-        /* 背景 3D 地球容器 */
-        #globe-canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1;
-            pointer-events: none;
+        /* 背景装饰 (模拟光纤/网格感) */
+        body::before {
+            content: "";
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background-image: 
+                linear-gradient(rgba(240, 185, 11, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(240, 185, 11, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            transform: rotate(15deg);
+            z-index: 0;
         }
 
-        /* 右侧绿色汇率卡片 (C - Coin Valuation) */
-        .rate-card {
+        /* 右上角：汇率卡片与节点状态 */
+        .status-container {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(0, 255, 127, 0.1);
-            border: 1px solid var(--green-glow);
-            padding: 15px 25px;
-            border-radius: 4px;
-            backdrop-filter: blur(8px);
             z-index: 100;
-            box-shadow: 0 0 15px rgba(0, 255, 127, 0.2);
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--green);
+            padding: 12px 18px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(0, 255, 127, 0.15);
         }
 
-        .rate-card h2 {
+        .node-tag {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--red);
+            border-radius: 50%;
+            animation: pulse-red 1.5s infinite;
+            box-shadow: 0 0 8px var(--red);
+        }
+
+        @keyframes pulse-red {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .status-container h2 {
             margin: 0;
-            font-size: 0.8rem;
-            color: var(--green-glow);
-            letter-spacing: 2px;
+            font-size: 0.65rem;
+            letter-spacing: 1px;
         }
 
-        .rate-card p {
+        .price-text {
             margin: 5px 0 0 0;
-            font-size: 1.4rem;
+            font-size: 1.2rem;
             font-weight: bold;
-            white-space: nowrap; /* 强制不换行，防止重叠 */
+            color: white;
+            white-space: nowrap;
         }
 
-        /* 中央登录面板 (F - Flexible UI) */
-        .terminal-box {
+        /* 中央：登录终端面板 */
+        .login-card {
             position: relative;
             z-index: 10;
             width: 90%;
-            max-width: 380px;
+            max-width: 360px;
             background: var(--glass);
-            padding: 40px;
             border: 1px solid rgba(240, 185, 11, 0.3);
             border-top: 4px solid var(--gold);
-            backdrop-filter: blur(15px);
-            border-radius: 0 0 8px 8px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }
-
-        .terminal-box h1 {
-            font-size: 1.5rem;
-            margin-bottom: 30px;
-            color: var(--gold);
+            padding: 40px 30px;
+            border-radius: 0 0 10px 10px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.6);
             text-align: center;
-            letter-spacing: 4px;
         }
 
-        .input-group {
-            margin-bottom: 20px;
+        .login-card h1 {
+            color: var(--gold);
+            font-size: 1.4rem;
+            margin-bottom: 30px;
+            letter-spacing: 5px;
+            text-shadow: 0 0 10px rgba(240, 185, 11, 0.3);
         }
 
-        input {
+        .input-field {
             width: 100%;
-            box-sizing: border-box;
-            background: rgba(0,0,0,0.6);
-            border: 1px solid rgba(240, 185, 11, 0.5);
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(240, 185, 11, 0.4);
             padding: 15px;
+            margin-bottom: 15px;
             color: white;
             font-family: 'Orbitron', sans-serif;
-            font-size: 1rem;
+            font-size: 0.9rem;
             outline: none;
             transition: 0.3s;
         }
 
-        input:focus {
+        .input-field:focus {
             border-color: var(--gold);
-            box-shadow: 0 0 10px rgba(240, 185, 11, 0.3);
+            box-shadow: 0 0 15px rgba(240, 185, 11, 0.2);
         }
 
-        .btn-login {
+        .login-btn {
             width: 100%;
             padding: 15px;
             background: var(--gold);
             color: black;
             border: none;
             font-family: 'Orbitron', sans-serif;
-            font-weight: bold;
+            font-weight: 700;
             font-size: 1rem;
             cursor: pointer;
             transition: 0.3s;
-            text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
-        .btn-login:hover {
+        .login-btn:hover {
             background: #ffcf33;
             transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(240, 185, 11, 0.4);
         }
 
-        .footer-links {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 0.7rem;
+        .reg-footer {
+            margin-top: 25px;
+            font-size: 0.75rem;
             color: #888;
         }
 
-        .footer-links span {
+        .reg-link {
             color: var(--gold);
             cursor: pointer;
             text-decoration: underline;
+            margin-left: 5px;
         }
-        @keyframes pulse {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.3; transform: scale(0.9); }
-    100% { opacity: 1; transform: scale(1); }
-}
+
+        /* 移动端适配 */
+        @media (max-width: 480px) {
+            .status-container {
+                top: 10px;
+                right: 10px;
+                padding: 10px;
+            }
+            .price-text { font-size: 1rem; }
+        }
     </style>
 </head>
 <body>
 
-    <canvas id="globe-canvas"></canvas>
-
-<div class="rate-card">
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
-        <div style="width:8px; height:8px; background:#ff4d4d; border-radius:50%; animation: pulse 1s infinite; box-shadow: 0 0 8px #ff4d4d;"></div>
-        <h2 style="font-size:0.6rem; color: #ff4d4d; letter-spacing: 1px; margin:0; font-weight: bold;">PENANG_NODE_ACTIVE</h2>
+    <div class="status-container">
+        <div class="node-tag">
+            <div class="pulse-dot"></div>
+            <h2 style="color: var(--red);">PENANG_NODE_ACTIVE</h2>
+        </div>
+        <h2 style="color: var(--green);">LIVE VALUATION</h2>
+        <p class="price-text">1 COIN = 100 USD</p>
     </div>
 
-    <h2 style="color: var(--green-glow); font-size: 0.8rem; margin:0;">LIVE VALUATION</h2>
-    <p style="margin: 5px 0 0 0; font-size: 1.2rem;">1 COIN = 100 USD</p>
-</div>
-
-    <div class="terminal-box">
+    <div class="login-card">
         <h1>MBA_TERMINAL</h1>
-        <div class="input-group">
-            <input type="text" placeholder="CLIENT USERNAME" id="username">
-        </div>
-        <div class="input-group">
-            <input type="password" placeholder="6-DIGIT PIN" maxlength="6" id="pin">
-        </div>
-        <button class="btn-login">LOGIN</button>
         
-        <div class="footer-links">
-            NEW NODE? <span id="reg-btn">REGISTER</span> ACCOUNT
+        <input type="text" class="input-field" placeholder="CLIENT ID" id="username">
+        <input type="password" class="input-field" placeholder="SECURE PIN" maxlength="6" id="pin">
+        
+        <button class="login-btn" onclick="handleLogin()">LOGIN</button>
+        
+        <div class="reg-footer">
+            SYSTEM ACCESS REQUIRED? <span class="reg-link" onclick="handleRegister()">REGISTER</span>
         </div>
     </div>
 
     <script>
-        // 这里预留你的 3D 地球渲染代码
-        console.log("PENANG_TERMINAL_READY");
-        
-        // 简单的交互反馈
-        document.getElementById('reg-btn').onclick = () => {
-            alert("SYSTEM MESSAGE: REGISTRATION PROTOCOL INITIATED.");
-        };
+        function handleLogin() {
+            console.log("Attempting terminal access...");
+            // 这里对接你的 server.js 登录接口
+        }
+
+        function handleRegister() {
+            alert("PROTOCOL: REDIRECTING TO REGISTRATION NODE...");
+            // 这里对接注册逻辑
+        }
     </script>
+
 </body>
 </html>
